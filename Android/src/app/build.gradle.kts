@@ -38,6 +38,9 @@ android {
     targetSdk = 35
     versionCode = 29
     versionName = "1.0.12"
+    ndk {
+      abiFilters += "arm64-v8a"
+    }
 
     // Needed for HuggingFace auth workflows.
     // Use the scheme of the "Redirect URLs" in HuggingFace app.
@@ -67,6 +70,11 @@ android {
   buildFeatures {
     compose = true
     buildConfig = true
+  }
+  packaging {
+    jniLibs {
+      useLegacyPackaging = true
+    }
   }
 }
 

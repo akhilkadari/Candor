@@ -11,6 +11,13 @@
       "llmSupportImage": true,
       "llmSupportAudio": true,
       "llmSupportThinking": true,
+      "socToModelFiles": {
+        "sm8750": {
+          "modelFile": "gemma-4-E2B-it_qualcomm_sm8750.litertlm",
+          "commitHash": "84b6978eff6e4eea02825bc2ee4ea48579f13109",
+          "sizeInBytes": 3016294400
+        }
+      },
       "defaultConfig": {
         "topK": 64,
         "topP": 0.95,
