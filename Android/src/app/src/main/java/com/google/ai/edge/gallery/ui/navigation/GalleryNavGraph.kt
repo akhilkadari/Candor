@@ -12,5 +12,5 @@ fun GalleryNavHost(
   modifier: Modifier = Modifier,
   modelManagerViewModel: ModelManagerViewModel,
 ) {
-  RecoveryApp(modifier = modifier)
+  RecoveryApp(modelManagerViewModel = modelManagerViewModel, modifier = modifier)
 }

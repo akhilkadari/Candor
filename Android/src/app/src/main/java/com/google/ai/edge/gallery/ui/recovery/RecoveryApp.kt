@@ -1,5 +1,6 @@
 package com.google.ai.edge.gallery.ui.recovery
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,13 +22,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -47,11 +55,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.google.ai.edge.gallery.ui.home.SettingsDialog
+import com.google.ai.edge.gallery.ui.llmchat.LlmChatScreen
+import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 
 private enum class RecoveryTab(val label: String, val badge: String) {
   LOG("Log", "L"),
   INSIGHTS("Insights", "I"),
   HISTORY("History", "H"),
+  AI("AI", "G"),
 }
 
 private data class InsightSection(
@@ -70,46 +82,52 @@ private data class HistoryEntryUi(
 )
 
 @Composable
-fun RecoveryApp(modifier: Modifier = Modifier) {
+fun RecoveryApp(modelManagerViewModel: ModelManagerViewModel, modifier: Modifier = Modifier) {
   var selectedTab by rememberSaveable { mutableStateOf(RecoveryTab.LOG) }
+  var showAiChat by rememberSaveable { mutableStateOf(false) }
+  var showSettingsDialog by remember { mutableStateOf(false) }
+
+  BackHandler(enabled = showAiChat) { showAiChat = false }
 
   Scaffold(
     modifier = modifier,
     containerColor = MaterialTheme.colorScheme.background,
     bottomBar = {
-      NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
-        RecoveryTab.values().forEach { tab ->
-          NavigationBarItem(
-            selected = selectedTab == tab,
-            onClick = { selectedTab = tab },
-            icon = {
-              Box(
-                modifier =
-                  Modifier.size(28.dp)
-                    .clip(CircleShape)
-                    .background(
+      if (!showAiChat) {
+        NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
+          RecoveryTab.values().forEach { tab ->
+            NavigationBarItem(
+              selected = selectedTab == tab,
+              onClick = { selectedTab = tab },
+              icon = {
+                Box(
+                  modifier =
+                    Modifier.size(28.dp)
+                      .clip(CircleShape)
+                      .background(
+                        if (selectedTab == tab) {
+                          MaterialTheme.colorScheme.primary
+                        } else {
+                          MaterialTheme.colorScheme.surfaceContainerHigh
+                        }
+                      ),
+                  contentAlignment = Alignment.Center,
+                ) {
+                  Text(
+                    text = tab.badge,
+                    style = MaterialTheme.typography.labelLarge,
+                    color =
                       if (selectedTab == tab) {
-                        MaterialTheme.colorScheme.primary
+                        MaterialTheme.colorScheme.onPrimary
                       } else {
-                        MaterialTheme.colorScheme.surfaceContainerHigh
-                      }
-                    ),
-                contentAlignment = Alignment.Center,
-              ) {
-                Text(
-                  text = tab.badge,
-                  style = MaterialTheme.typography.labelLarge,
-                  color =
-                    if (selectedTab == tab) {
-                      MaterialTheme.colorScheme.onPrimary
-                    } else {
-                      MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
-              }
-            },
-            label = { Text(tab.label) },
-          )
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                      },
+                  )
+                }
+              },
+              label = { Text(tab.label) },
+            )
+          }
         }
       }
     },
@@ -118,6 +136,77 @@ fun RecoveryApp(modifier: Modifier = Modifier) {
       RecoveryTab.LOG -> RecoveryLogScreen(contentPadding = innerPadding)
       RecoveryTab.INSIGHTS -> RecoveryInsightsScreen(contentPadding = innerPadding)
       RecoveryTab.HISTORY -> RecoveryHistoryScreen(contentPadding = innerPadding)
+      RecoveryTab.AI -> {
+        if (showAiChat) {
+          LlmChatScreen(
+            modelManagerViewModel = modelManagerViewModel,
+            navigateUp = { showAiChat = false },
+          )
+        } else {
+          AiLauncherScreen(
+            contentPadding = innerPadding,
+            onOpenChat = { showAiChat = true },
+            onOpenSettings = { showSettingsDialog = true },
+          )
+        }
+      }
+    }
+  }
+
+  if (showSettingsDialog) {
+    SettingsDialog(
+      curThemeOverride = modelManagerViewModel.readThemeOverride(),
+      modelManagerViewModel = modelManagerViewModel,
+      onDismissed = { showSettingsDialog = false },
+    )
+  }
+}
+
+@Composable
+private fun AiLauncherScreen(
+  contentPadding: PaddingValues,
+  onOpenChat: () -> Unit,
+  onOpenSettings: () -> Unit,
+) {
+  Column(
+    modifier =
+      Modifier.fillMaxSize()
+        .background(MaterialTheme.colorScheme.background)
+        .padding(contentPadding)
+        .padding(horizontal = 24.dp),
+    verticalArrangement = Arrangement.Center,
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    Text(
+      text = "Gemma 4",
+      style = MaterialTheme.typography.headlineLarge,
+      fontWeight = FontWeight.Bold,
+      color = MaterialTheme.colorScheme.onSurface,
+    )
+    Text(
+      text = "On-Device AI Chat",
+      style = MaterialTheme.typography.bodyLarge,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      modifier = Modifier.padding(top = 8.dp, bottom = 40.dp),
+    )
+    Button(
+      onClick = onOpenChat,
+      modifier = Modifier.fillMaxWidth(),
+    ) {
+      Text("Open Gemma 4 E2B Chat")
+    }
+    Spacer(modifier = Modifier.height(12.dp))
+    OutlinedButton(
+      onClick = onOpenSettings,
+      modifier = Modifier.fillMaxWidth(),
+    ) {
+      Icon(
+        imageVector = Icons.Rounded.Settings,
+        contentDescription = null,
+        modifier = Modifier.size(18.dp),
+      )
+      Spacer(modifier = Modifier.width(8.dp))
+      Text("Settings")
     }
   }
 }
