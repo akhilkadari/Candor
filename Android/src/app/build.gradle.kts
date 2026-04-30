@@ -72,9 +72,7 @@ android {
     buildConfig = true
   }
   packaging {
-    jniLibs {
-      useLegacyPackaging = true
-    }
+    jniLibs.useLegacyPackaging = true
   }
 }
 
