@@ -42,8 +42,7 @@ object InsightsEngine {
   const val ANALYSIS_SYSTEM_INSTRUCTION = """
 You are a private, on-device recovery data analyst.
 Analyze personal check-in data and report patterns as brief, specific, data-grounded observations.
-Output only valid JSON with four categories: earlySignals, patterns, protectiveFactors, and consistency. 
-No disclaimers, no advice, no markdown fences, no text outside the JSON object.
+Output only valid JSON. No disclaimers, no advice, no markdown fences, no text outside the JSON object.
 """
 
   fun computeEarlySignalItems(entries: List<CheckInEntry>): List<InsightItem> {
@@ -253,28 +252,63 @@ No disclaimers, no advice, no markdown fences, no text outside the JSON object.
   }
 
   fun buildInsightPrompt(entries: List<CheckInEntry>): String {
-    val recent = entries.sortedByDescending { it.date }.take(30)
-    val header = "DATE|CRAV|MOOD|STRESS|SOCIAL|EFFICACY|TRIGGERS|REFLECTION"
-    val rows = recent.joinToString("\n") { e ->
-      "${e.date}|${e.cravingIntensity}|${e.mood}|" +
-        "${e.stressLevel}|${e.socialConnection}|${e.selfEfficacy}|" +
-        "${e.triggersList.joinToString(",") { TriggerKeys.displayLabels[it] ?: it }}|${e.reflection}"
+    val sorted = entries.sortedByDescending { it.date }
+
+    // 5 most recent entries verbatim — gives the model concrete recent signal
+    val recentRows = sorted.take(5).joinToString("\n") { e ->
+      val triggers = e.triggersList
+        .filter { it != TriggerKeys.NONE }
+        .joinToString(",") { TriggerKeys.displayLabels[it] ?: it }
+        .ifEmpty { "-" }
+      "${e.date}|${e.cravingIntensity}|${e.mood}|${e.stressLevel}|${e.socialConnection}|${e.selfEfficacy}|$triggers"
     }
+
+    // 4 rolling 7-day weekly averages, pre-computed on CPU — replaces 25 raw rows
+    val today = LocalDate.now()
+    val weekRows = (0..3).mapNotNull { week ->
+      val weekEnd = today.minusDays(week * 7L)
+      val weekStart = weekEnd.minusDays(6)
+      val w = sorted.filter { e ->
+        val d = runCatching { LocalDate.parse(e.date) }.getOrNull() ?: return@filter false
+        !d.isBefore(weekStart) && !d.isAfter(weekEnd)
+      }
+      if (w.isEmpty()) null
+      else {
+        fun avg(f: (CheckInEntry) -> Int) = "%.1f".format(w.map { f(it).toDouble() }.average())
+        "$weekEnd|${avg { it.cravingIntensity }}|${avg { it.mood }}|${avg { it.stressLevel }}|${avg { it.socialConnection }}|${avg { it.selfEfficacy }}|${w.size}"
+      }
+    }.joinToString("\n")
+
+    // Trigger frequency across all entries — replaces per-row trigger columns
+    val triggerCounts = mutableMapOf<String, Int>()
+    var noTriggerDays = 0
+    entries.forEach { e ->
+      val meaningful = e.triggersList.filter { it != TriggerKeys.NONE }
+      if (meaningful.isEmpty()) noTriggerDays++
+      else meaningful.forEach { t -> triggerCounts[t] = (triggerCounts[t] ?: 0) + 1 }
+    }
+    val triggerStr = buildString {
+      triggerCounts.entries.sortedByDescending { it.value }.forEach { (k, v) ->
+        append("${TriggerKeys.displayLabels[k] ?: k}:$v ")
+      }
+      if (noTriggerDays > 0) append("no-trigger-days:$noTriggerDays")
+    }.trim().ifEmpty { "none recorded" }
+
     return """
-Field guide: craving_intensity (1-10, higher=worse), mood (1-10, higher=better),
-stress_level (1-10, higher=worse), social_connection (1-10, higher=better),
-self_efficacy (1-10, higher=better), triggers (comma-separated keys), reflection (text).
+Field guide: craving/stress (1-10 higher=worse), mood/social/efficacy (1-10 higher=better).
 
-Entries (newest first):
-$header
-$rows
+RECENT CHECK-INS — ${minOf(sorted.size, 5)} newest, verbatim (newest first):
+DATE|CRAV|MOOD|STRESS|SOCIAL|EFF|TRIGGERS
+$recentRows
 
-Return ONLY this JSON structure, ensuring ALL 4 categories have exactly 2 items each:
+WEEKLY AVERAGES — pre-computed on-device (newest week first, ${entries.size} total check-ins):
+WEEK_END|CRAV|MOOD|STRESS|SOCIAL|EFF|N
+$weekRows
+
+TRIGGER FREQUENCY: $triggerStr
+
+Return ONLY this JSON:
 {
-  "earlySignals": [
-    {"text": "...", "evidence": "..."},
-    {"text": "...", "evidence": "..."}
-  ],
   "patterns": [
     {"text": "...", "evidence": "..."},
     {"text": "...", "evidence": "..."}
@@ -282,25 +316,10 @@ Return ONLY this JSON structure, ensuring ALL 4 categories have exactly 2 items 
   "protectiveFactors": [
     {"text": "...", "evidence": "..."},
     {"text": "...", "evidence": "..."}
-  ],
-  "consistency": [
-    {"text": "...", "evidence": "..."},
-    {"text": "...", "evidence": "..."}
   ]
 }
 
-Category Requirements:
-- earlySignals: Recent shifts (last 3-5 days) compared to previous baseline.
-- patterns: Repeated multi-signal combinations (e.g., "high stress usually follows social pressure").
-- protectiveFactors: Positive correlations (e.g., "days with high social connection correlate with lower cravings").
-- consistency: Observations on logging frequency, streaks, or gaps in data.
-
-General Requirements:
-- Each category MUST contain exactly 2 items.
-- text: 1 short sentence in second person, grounded in this user's specific history.
-- evidence: cite specific counts, dates, or timeframes.
-- Use natural language; never reference field codes like "craving_intensity".
-- Do not give advice, warnings, or disclaimers.
+Rules: patterns=2 cross-field observations (combine ≥2 fields each); protectiveFactors=2 positive correlations; text=1 sentence second person; evidence=cite counts or week ranges; no field codes; no advice.
     """.trimIndent()
   }
 

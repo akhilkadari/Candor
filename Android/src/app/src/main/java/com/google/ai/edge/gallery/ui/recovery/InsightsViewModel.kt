@@ -211,6 +211,46 @@ class InsightsViewModel @Inject constructor(
       instance.conversation = analysisConversation // Update the instance's active conversation
 
       var rawResponse = ""
+      // Track brace depth to detect when the top-level JSON object is fully received,
+      // then cancel to avoid waiting for post-JSON rambling the model sometimes adds.
+      var braceDepth = 0
+      var jsonStarted = false
+      var jsonComplete = false
+
+      suspend fun finalizeResponse() {
+        val parsed = parseGemmaResponse(rawResponse)
+        when (parsed) {
+          is ParsedGemmaError -> {
+            _uiState.update {
+              it.copy(
+                gemmaStatus = GemmaInsightStatus.Error(parsed.message),
+                streamingText = "",
+              )
+            }
+          }
+          is ParsedGemmaInsights -> {
+            val snapshot = StoredInsightsSnapshot(
+              generatedAt = System.currentTimeMillis(),
+              entryCount = entries.size,
+              earlySignals = InsightsEngine.computeEarlySignalItems(entries),
+              recurringPatterns = parsed.patterns,
+              protectiveFactors = parsed.protectiveFactors,
+              consistency = InsightsEngine.computeConsistencyItems(entries),
+            )
+            insightRepository.saveSnapshot(snapshot)
+            _uiState.update {
+              it.copy(
+                snapshot = snapshot,
+                gemmaStatus = GemmaInsightStatus.Done(snapshot.generatedAt),
+                streamingText = "",
+                entryCount = entries.size,
+              )
+            }
+          }
+        }
+        try { analysisConversation.close() } catch (_: Exception) {}
+      }
+
       try {
         analysisConversation.sendMessageAsync(
           Contents.of(listOf(Content.Text(prompt))),
@@ -219,46 +259,33 @@ class InsightsViewModel @Inject constructor(
               val text = message.toString()
               rawResponse += text
               _uiState.update { it.copy(streamingText = rawResponse) }
-            }
-
-            override fun onDone() {
-              Log.d(TAG, "Gemma Response: $rawResponse")
-              viewModelScope.launch(Dispatchers.Default) {
-                val parsed = parseGemmaResponse(rawResponse)
-                when (parsed) {
-                  is ParsedGemmaError -> {
-                    _uiState.update {
-                      it.copy(
-                        gemmaStatus = GemmaInsightStatus.Error(parsed.message),
-                        streamingText = "",
-                      )
-                    }
-                  }
-                  is ParsedGemmaInsights -> {
-                    val snapshot = StoredInsightsSnapshot(
-                      generatedAt = System.currentTimeMillis(),
-                      entryCount = entries.size,
-                      earlySignals = parsed.earlySignals.ifEmpty { InsightsEngine.computeEarlySignalItems(entries) },
-                      recurringPatterns = parsed.patterns,
-                      protectiveFactors = parsed.protectiveFactors,
-                      consistency = parsed.consistency.ifEmpty { InsightsEngine.computeConsistencyItems(entries) },
-                    )
-                    insightRepository.saveSnapshot(snapshot)
-                    _uiState.update {
-                      it.copy(
-                        snapshot = snapshot,
-                        gemmaStatus = GemmaInsightStatus.Done(snapshot.generatedAt),
-                        streamingText = "",
-                        entryCount = entries.size,
-                      )
-                    }
-                  }
+              // Count braces to detect when the top-level JSON object closes
+              for (ch in text) {
+                when (ch) {
+                  '{' -> { braceDepth++; jsonStarted = true }
+                  '}' -> if (jsonStarted) braceDepth--
                 }
-                analysisConversation.close()
+              }
+              if (jsonStarted && braceDepth <= 0 && !jsonComplete) {
+                jsonComplete = true
+                try { analysisConversation.cancelProcess() } catch (_: Exception) {}
               }
             }
 
+            override fun onDone() {
+              if (jsonComplete) return // already handled via onError path after cancelProcess
+              jsonComplete = true
+              Log.d(TAG, "Gemma Response: $rawResponse")
+              viewModelScope.launch(Dispatchers.Default) { finalizeResponse() }
+            }
+
             override fun onError(throwable: Throwable) {
+              if (jsonComplete) {
+                // Intentional early termination triggered after JSON was complete
+                Log.d(TAG, "Gemma early-terminated. Response: $rawResponse")
+                viewModelScope.launch(Dispatchers.Default) { finalizeResponse() }
+                return
+              }
               Log.e(TAG, "Inference error", throwable)
               _uiState.update {
                 it.copy(
@@ -266,7 +293,7 @@ class InsightsViewModel @Inject constructor(
                   streamingText = "",
                 )
               }
-              analysisConversation.close()
+              try { analysisConversation.close() } catch (_: Exception) {}
             }
           },
           emptyMap(),
@@ -279,7 +306,7 @@ class InsightsViewModel @Inject constructor(
             streamingText = "",
           )
         }
-        analysisConversation.close()
+        try { analysisConversation.close() } catch (_: Exception) {}
       }
     }
   }
@@ -355,8 +382,10 @@ class InsightsViewModel @Inject constructor(
       // Strip markdown fences the model may add despite instructions
       val cleaned = raw.replace("```json", "").replace("```", "")
 
-      // Search for the JSON block
-      val start = cleaned.indexOf('{')
+      // Anchor to the last "patterns" key to skip any template echo the model may prepend,
+      // then walk back to its enclosing '{' for the true start of the JSON object.
+      val patternsIdx = cleaned.lastIndexOf("\"patterns\"")
+      val start = if (patternsIdx >= 0) cleaned.lastIndexOf('{', patternsIdx) else cleaned.indexOf('{')
       val end = cleaned.lastIndexOf('}')
 
       if (start == -1 || end == -1 || start >= end) {
