@@ -5,11 +5,22 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [Entry::class, Insight::class], version = 3, exportSchema = false)
+@Database(
+  entities = [
+    Entry::class,
+    Insight::class,
+    EntryEmbedding::class,
+    RecoveryAnalysisState::class,
+  ],
+  version = 4,
+  exportSchema = false,
+)
 abstract class RecoveryDatabase : RoomDatabase() {
 
   abstract fun entryDao(): EntryDao
   abstract fun insightDao(): InsightDao
+  abstract fun entryEmbeddingDao(): EntryEmbeddingDao
+  abstract fun recoveryAnalysisStateDao(): RecoveryAnalysisStateDao
 
   companion object {
     @Volatile private var INSTANCE: RecoveryDatabase? = null

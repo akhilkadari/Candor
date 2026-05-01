@@ -3,6 +3,7 @@ package com.google.ai.edge.gallery.ui.recovery
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.data.CheckInRepository
+import com.google.ai.edge.gallery.data.recovery.RecoveryAnalysisService
 import com.google.ai.edge.gallery.proto.CheckInEntry
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
@@ -15,6 +16,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class SaveStatus { IDLE, SAVING, SAVED, ERROR }
+
+enum class EntryScenario {
+  STEADY_PROGRESS,
+  DOWNWARD_SPIRAL,
+  VOLATILE_ROLLERCOASTER
+}
 
 data class LogUiState(
   val date: String = "", // empty means today's new entry
@@ -44,6 +51,7 @@ data class HistoryScreenState(
 @HiltViewModel
 class RecoveryViewModel @Inject constructor(
   private val checkInRepository: CheckInRepository,
+  private val recoveryAnalysisService: RecoveryAnalysisService,
 ) : ViewModel() {
 
   private val _logUiState = MutableStateFlow(LogUiState())
@@ -184,6 +192,7 @@ class RecoveryViewModel @Inject constructor(
         .build()
 
       checkInRepository.addOrReplaceEntry(entry)
+      recoveryAnalysisService.onCheckInSaved(entry)
       _logUiState.update { it.copy(saveStatus = SaveStatus.SAVED) }
       refreshHistory()
 
@@ -194,73 +203,73 @@ class RecoveryViewModel @Inject constructor(
 
   fun getEntryCount(): Int = checkInRepository.getEntryCount()
 
-  fun seedMockData() {
+  fun seedMockData(scenario: EntryScenario = EntryScenario.STEADY_PROGRESS) {
     viewModelScope.launch {
       val now = LocalDate.now()
-      // Generate 30 days of diverse data
+      checkInRepository.clearAllEntries() // Start fresh for the scenario
+
       for (i in 0..30) {
         val date = now.minusDays(i.toLong()).toString()
         val timestamp = System.currentTimeMillis() - (i * 86400000L)
 
-        // Create different types of days
-        val entry = when {
-          i % 7 == 0 -> { // Weekly stressful work day
-            CheckInEntry.newBuilder()
-              .setDate(date)
-              .setCravingIntensity(7 + (i % 3))
-              .setMood(3 + (i % 2))
-              .setStressLevel(8 + (i % 2))
-              .setSocialConnection(4)
-              .setSelfEfficacy(5)
-              .addAllTriggers(listOf(TriggerKeys.WORK_STRESS, TriggerKeys.FINANCIAL_STRESS))
-              .setReflection("Mondays are tough. Work deadlines are piling up and I'm feeling the financial pressure. Managed to stay strong but the urge was definitely there.")
-              .setTimestampMs(timestamp)
-              .build()
-          }
-          i % 7 == 5 || i % 7 == 6 -> { // Weekends - Social/Substance cues
-            val highRisk = i % 14 == 6
-            CheckInEntry.newBuilder()
-              .setDate(date)
-              .setCravingIntensity(if (highRisk) 9 else 4)
-              .setMood(if (highRisk) 4 else 8)
-              .setStressLevel(if (highRisk) 6 else 2)
-              .setSocialConnection(if (highRisk) 2 else 9)
-              .setSelfEfficacy(if (highRisk) 3 else 8)
-              .addAllTriggers(if (highRisk) listOf(TriggerKeys.SOCIAL_PRESSURE, TriggerKeys.SUBSTANCE_CUES) else listOf(TriggerKeys.POSITIVE_CELEBRATION))
-              .setReflection(if (highRisk) "Went to a party where I didn't know many people. Seeing others use was very triggering and I felt out of place." else "Great weekend with family. Felt very supported and didn't even think about using.")
-              .setTimestampMs(timestamp)
-              .build()
-          }
-          i % 10 == 3 -> { // Interpersonal conflict day
-            CheckInEntry.newBuilder()
-              .setDate(date)
-              .setCravingIntensity(8)
-              .setMood(2)
-              .setStressLevel(7)
-              .setSocialConnection(1)
-              .setSelfEfficacy(4)
-              .addAllTriggers(listOf(TriggerKeys.INTERPERSONAL_CONFLICT))
-              .setReflection("Had a major argument with a close friend today. Feeling lonely and misunderstood. It's hard not to reach for old coping mechanisms when I'm this upset.")
-              .setTimestampMs(timestamp)
-              .build()
-          }
-          else -> { // Normal/Stable days
-            CheckInEntry.newBuilder()
-              .setDate(date)
-              .setCravingIntensity(1 + (i % 3))
-              .setMood(6 + (i % 3))
-              .setStressLevel(2 + (i % 3))
-              .setSocialConnection(7)
-              .setSelfEfficacy(8 + (i % 2))
-              .addAllTriggers(listOf(TriggerKeys.NONE))
-              .setReflection("A steady day. Focused on my routine and felt productive. Cravings were minimal and easily managed.")
-              .setTimestampMs(timestamp)
-              .build()
-          }
+        val entry = when (scenario) {
+          EntryScenario.STEADY_PROGRESS -> generateSteadyProgressDay(date, i, timestamp)
+          EntryScenario.DOWNWARD_SPIRAL -> generateDownwardSpiralDay(date, i, timestamp)
+          EntryScenario.VOLATILE_ROLLERCOASTER -> generateVolatileDay(date, i, timestamp)
         }
         checkInRepository.addOrReplaceEntry(entry)
+        recoveryAnalysisService.onCheckInSaved(entry)
       }
       refreshHistory()
     }
+  }
+
+  private fun generateSteadyProgressDay(date: String, dayIndex: Int, timestamp: Long): CheckInEntry {
+    // Trend: Improving over time (dayIndex 30 was worse than dayIndex 0)
+    val progressFactor = (30 - dayIndex).toFloat() / 30f // 1.0 today, 0.0 a month ago
+    return CheckInEntry.newBuilder()
+      .setDate(date)
+      .setCravingIntensity((6 - (4 * progressFactor)).toInt().coerceIn(1, 10))
+      .setMood((4 + (5 * progressFactor)).toInt().coerceIn(1, 10))
+      .setStressLevel((7 - (4 * progressFactor)).toInt().coerceIn(1, 10))
+      .setSocialConnection((3 + (6 * progressFactor)).toInt().coerceIn(1, 10))
+      .setSelfEfficacy((4 + (5 * progressFactor)).toInt().coerceIn(1, 10))
+      .addAllTriggers(if (dayIndex > 20) listOf(TriggerKeys.WORK_STRESS) else listOf(TriggerKeys.POSITIVE_CELEBRATION))
+      .setReflection("Feeling more stable as the weeks go by. My social support is really helping me stay focused.")
+      .setTimestampMs(timestamp)
+      .build()
+  }
+
+  private fun generateDownwardSpiralDay(date: String, dayIndex: Int, timestamp: Long): CheckInEntry {
+    // Trend: Getting worse recently (dayIndex 0 is worse than dayIndex 30)
+    val decayFactor = (30 - dayIndex).toFloat() / 30f // 1.0 today, 0.0 a month ago
+    return CheckInEntry.newBuilder()
+      .setDate(date)
+      .setCravingIntensity((2 + (7 * decayFactor)).toInt().coerceIn(1, 10))
+      .setMood((8 - (6 * decayFactor)).toInt().coerceIn(1, 10))
+      .setStressLevel((2 + (7 * decayFactor)).toInt().coerceIn(1, 10))
+      .setSocialConnection((8 - (6 * decayFactor)).toInt().coerceIn(1, 10))
+      .setSelfEfficacy((9 - (7 * decayFactor)).toInt().coerceIn(1, 10))
+      .addAllTriggers(if (dayIndex < 10) listOf(TriggerKeys.SUBSTANCE_CUES, TriggerKeys.SOCIAL_PRESSURE) else listOf(TriggerKeys.NONE))
+      .setReflection("It's getting harder lately. I've been isolating myself and the cravings are becoming much more frequent.")
+      .setTimestampMs(timestamp)
+      .build()
+  }
+
+  private fun generateVolatileDay(date: String, dayIndex: Int, timestamp: Long): CheckInEntry {
+    // High variability based on day of week or random swings
+    val isWeekend = dayIndex % 7 == 0 || dayIndex % 7 == 1
+    val swing = if (dayIndex % 2 == 0) 1 else -1
+    return CheckInEntry.newBuilder()
+      .setDate(date)
+      .setCravingIntensity(if (isWeekend) 8 else (4 + (3 * swing)))
+      .setMood(if (isWeekend) 3 else (6 + (2 * swing)))
+      .setStressLevel(if (isWeekend) 7 else (5 + (4 * swing)))
+      .setSocialConnection(if (isWeekend) 2 else 7)
+      .setSelfEfficacy(if (isWeekend) 4 else 8)
+      .addAllTriggers(if (isWeekend) listOf(TriggerKeys.SOCIAL_PRESSURE) else listOf(TriggerKeys.WORK_STRESS))
+      .setReflection("Every day feels like a coin toss. One day I'm fine, the next I'm struggling with intense pressure.")
+      .setTimestampMs(timestamp)
+      .build()
   }
 }

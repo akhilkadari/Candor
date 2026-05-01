@@ -41,6 +41,7 @@ moshi = "1.15.2"
 ksp = "2.3.6"
 mlkit-genai-prompt = "1.0.0-beta2"  # Ref: https://developers.google.com/ml-kit/genai/prompt/android/get-started#configure-project
 room = "2.7.0"
+litert = "2.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -97,6 +98,7 @@ mlkit-genai-prompt = { group = "com.google.mlkit", name = "genai-prompt", versio
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -349,7 +349,7 @@ private fun RecoveryInsightsScreen(
       RecoveryHeroCard(
         eyebrow = "Insights",
         title = "Turn your log history into signals you can act on.",
-        body = "Gemma 4 E2B analyzes your saved check-ins on-device, then stores the latest insight snapshot here.",
+        body = "Embeddings run locally on the device, CPU retrieval builds the evidence, and the final insight wording is generated on-device from a compact summary.",
       )
     }
 
@@ -362,6 +362,58 @@ private fun RecoveryInsightsScreen(
           Text(
             text = "These sections stay saved after generation, so you can come back without re-running analysis every time.",
             style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          if (snapshot.insightModelName.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+              text = "Insight model: ${snapshot.insightModelName} on ${snapshot.insightAccelerator}.",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
+          if (snapshot.retrievalSummary.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+              text = snapshot.retrievalSummary,
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
+          if (snapshot.embeddingStatusSummary.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+              text = snapshot.embeddingStatusSummary,
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
+        }
+      }
+    }
+
+    item {
+      SectionCard(
+        title = "Pipeline Status",
+        subtitle = "NPU embeddings + CPU retrieval + GPU/CPU summarization",
+      ) {
+        Text(
+          text =
+            if (uiState.insightsStale) {
+              uiState.staleReason.ifBlank {
+                "New check-ins are waiting to be folded into the next insight run."
+              }
+            } else {
+              "Insights are current with your latest saved check-ins."
+            },
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (uiState.embeddingStatusSummary.isNotBlank()) {
+          Spacer(modifier = Modifier.height(8.dp))
+          Text(
+            text = uiState.embeddingStatusSummary,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
         }
@@ -503,19 +555,35 @@ private fun RecoveryHistoryScreen(
         selectedDate = historyState.selectedDate,
         onDayClick = { viewModel.selectWeekDay(it) },
       )
-    }
-
-    // ── Seed button ───────────────────────────────────────────────────────
-    item {
-      Button(
-        onClick = { viewModel.seedMockData() },
+      
+      // Scenario Seed Buttons for Testing
+      Text(
+        text = "Seed Test Scenarios",
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+      )
+      Row(
         modifier = Modifier.fillMaxWidth(),
-        colors = ButtonDefaults.buttonColors(
-          containerColor = MaterialTheme.colorScheme.secondaryContainer,
-          contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        ),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
       ) {
-        Text("Seed 21 Days of Mock Data")
+        val scenarios = listOf(
+          "Steady" to EntryScenario.STEADY_PROGRESS,
+          "Spiral" to EntryScenario.DOWNWARD_SPIRAL,
+          "Volatile" to EntryScenario.VOLATILE_ROLLERCOASTER
+        )
+        scenarios.forEach { (label, scenario) ->
+          Button(
+            onClick = { viewModel.seedMockData(scenario) },
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 4.dp),
+            colors = ButtonDefaults.buttonColors(
+              containerColor = MaterialTheme.colorScheme.secondaryContainer,
+              contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+          ) {
+            Text(label, style = MaterialTheme.typography.labelSmall)
+          }
+        }
       }
     }
 
@@ -754,14 +822,14 @@ private fun InsightActionCard(
           Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
             Text(
-              text = "Gemma 4 E2B is analyzing your saved log history on-device.",
+              text = "The app is retrieving local evidence on CPU and generating the final summary on-device.",
               style = MaterialTheme.typography.bodyMedium,
             )
           }
         }
         GemmaInsightStatus.NoModel -> {
           Text(
-            text = "Load `gemma-4-E2B-it_qualcomm_sm8750.litertlm` through the Gemma 4 model entry on the main screen to generate or refresh insights on NPU. Saved insights remain visible below.",
+            text = "Load a downloaded LiteRT-LM chat model with GPU or CPU support from the main screen. On SM8750 devices, EmbeddingGemma targets the local NPU first and falls back to CPU if needed.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
@@ -782,7 +850,7 @@ private fun InsightActionCard(
         }
         is GemmaInsightStatus.Done -> {
           Text(
-            text = "Run the model again whenever you want a fresh snapshot after new check-ins.",
+            text = "Run the model again whenever you want a fresh snapshot after new check-ins. Retrieval stays local, and only the final wording step is regenerated.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )

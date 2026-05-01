@@ -1,5 +1,6 @@
 package com.google.ai.edge.gallery.ui.recovery
 
+import com.google.ai.edge.gallery.data.recovery.RetrievedPatternContext
 import com.google.ai.edge.gallery.proto.CheckInEntry
 import java.time.Duration
 import java.time.LocalDate
@@ -42,8 +43,8 @@ object InsightsEngine {
   const val ANALYSIS_SYSTEM_INSTRUCTION = """
 You are a private, on-device recovery data analyst.
 Analyze personal check-in data and report patterns as brief, specific, data-grounded observations.
-Output only valid JSON with four categories: earlySignals, patterns, protectiveFactors, and consistency. 
-No disclaimers, no advice, no markdown fences, no text outside the JSON object.
+The app already computed trends, risk scores, and semantic retrieval. Use those summaries instead of re-reading the entire journal history as if it were raw text.
+Output only valid JSON. No disclaimers, no advice, no markdown fences, no text outside the JSON object.
 """
 
   fun computeEarlySignalItems(entries: List<CheckInEntry>): List<InsightItem> {
@@ -252,7 +253,11 @@ No disclaimers, no advice, no markdown fences, no text outside the JSON object.
     return items.take(2)
   }
 
-  fun buildInsightPrompt(entries: List<CheckInEntry>): String {
+  fun buildInsightPrompt(
+    entries: List<CheckInEntry>,
+    patternContext: RetrievedPatternContext,
+    staleReason: String,
+  ): String {
     val recent = entries.sortedByDescending { it.date }.take(30)
     val header = "DATE|CRAV|MOOD|STRESS|SOCIAL|EFFICACY|TRIGGERS|REFLECTION"
     val rows = recent.joinToString("\n") { e ->
@@ -260,21 +265,39 @@ No disclaimers, no advice, no markdown fences, no text outside the JSON object.
         "${e.stressLevel}|${e.socialConnection}|${e.selfEfficacy}|" +
         "${e.triggersList.joinToString(",") { TriggerKeys.displayLabels[it] ?: it }}|${e.reflection}"
     }
+    val riskyRows =
+      patternContext.riskyMatches.joinToString("\n") { "- ${it.text} :: ${it.evidence}" }.ifBlank {
+        "- none"
+      }
+    val protectiveRows =
+      patternContext.protectiveMatches.joinToString("\n") { "- ${it.text} :: ${it.evidence}" }
+        .ifBlank { "- none" }
+    val semanticRows =
+      patternContext.semanticMatches.joinToString("\n") { "- ${it.text} :: ${it.evidence}" }
+        .ifBlank { "- none" }
     return """
 Field guide: craving_intensity (1-10, higher=worse), mood (1-10, higher=better),
 stress_level (1-10, higher=worse), social_connection (1-10, higher=better),
 self_efficacy (1-10, higher=better), triggers (comma-separated keys), reflection (text).
 
+Refresh reason:
+$staleReason
+
+CPU-generated risky evidence:
+$riskyRows
+
+CPU-generated protective evidence:
+$protectiveRows
+
+Semantic retrieval matches:
+$semanticRows
+
 Entries (newest first):
 $header
 $rows
 
-Return ONLY this JSON structure, ensuring ALL 4 categories have exactly 2 items each:
+Return ONLY this JSON:
 {
-  "earlySignals": [
-    {"text": "...", "evidence": "..."},
-    {"text": "...", "evidence": "..."}
-  ],
   "patterns": [
     {"text": "...", "evidence": "..."},
     {"text": "...", "evidence": "..."}
@@ -282,25 +305,16 @@ Return ONLY this JSON structure, ensuring ALL 4 categories have exactly 2 items 
   "protectiveFactors": [
     {"text": "...", "evidence": "..."},
     {"text": "...", "evidence": "..."}
-  ],
-  "consistency": [
-    {"text": "...", "evidence": "..."},
-    {"text": "...", "evidence": "..."}
   ]
 }
 
-Category Requirements:
-- earlySignals: Recent shifts (last 3-5 days) compared to previous baseline.
-- patterns: Repeated multi-signal combinations (e.g., "high stress usually follows social pressure").
-- protectiveFactors: Positive correlations (e.g., "days with high social connection correlate with lower cravings").
-- consistency: Observations on logging frequency, streaks, or gaps in data.
-
-General Requirements:
-- Each category MUST contain exactly 2 items.
-- text: 1 short sentence in second person, grounded in this user's specific history.
-- evidence: cite specific counts, dates, or timeframes.
-- Use natural language; never reference field codes like "craving_intensity".
-- Do not give advice, warnings, or disclaimers.
+- patterns: exactly 2 multi-signal observations; each must combine 2 or more different fields
+- protectiveFactors: exactly 2 positive correlations showing what correlates with better days
+- text: 1 short sentence in second person, grounded in this user's history
+- evidence: cite specific counts or timeframes
+- prioritize the CPU-generated evidence tables above the raw entry list
+- use natural language only; never reference field codes like "craving_intensity"
+- do not give advice, warnings, or disclaimers
     """.trimIndent()
   }
 

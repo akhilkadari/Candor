@@ -50,6 +50,11 @@ android {
     manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    externalNativeBuild {
+      cmake {
+        cppFlags += "-std=c++17"
+      }
+    }
   }
 
   buildTypes {
@@ -70,6 +75,12 @@ android {
   buildFeatures {
     compose = true
     buildConfig = true
+  }
+
+  externalNativeBuild {
+    cmake {
+      path = file("src/main/cpp/CMakeLists.txt")
+    }
   }
 }
 
@@ -93,6 +104,7 @@ dependencies {
   implementation(libs.androidx.security.crypto)
   implementation(libs.androidx.webkit)
   implementation(libs.litertlm)
+  implementation(libs.litert)
   implementation(libs.commonmark)
   implementation(libs.richtext)
   implementation(libs.tflite)

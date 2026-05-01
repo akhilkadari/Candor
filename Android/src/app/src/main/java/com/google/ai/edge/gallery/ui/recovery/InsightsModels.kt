@@ -12,4 +12,8 @@ data class StoredInsightsSnapshot(
   val recurringPatterns: List<InsightItem>,
   val protectiveFactors: List<InsightItem>,
   val consistency: List<InsightItem>,
+  val retrievalSummary: String = "",
+  val embeddingStatusSummary: String = "",
+  val insightModelName: String = "",
+  val insightAccelerator: String = "",
 )
