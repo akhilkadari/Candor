@@ -44,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,9 +59,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.google.ai.edge.gallery.ui.home.SettingsDialog
 import com.google.ai.edge.gallery.ui.llmchat.LlmChatScreen
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private enum class RecoveryTab(val label: String, val badge: String) {
   LOG("Log", "L"),
@@ -76,25 +85,23 @@ private data class InsightSection(
   val tone: Color,
 )
 
-private data class HistoryEntryUi(
-  val date: String,
-  val headline: String,
-  val note: String,
-  val tags: List<String>,
-  val riskLabel: String,
-)
-
 @Composable
-fun RecoveryApp(modelManagerViewModel: ModelManagerViewModel, modifier: Modifier = Modifier) {
+fun RecoveryApp(
+  modelManagerViewModel: ModelManagerViewModel,
+  modifier: Modifier = Modifier,
+  recoveryViewModel: RecoveryViewModel = hiltViewModel()
+) {
   var selectedTab by rememberSaveable { mutableStateOf(RecoveryTab.LOG) }
   var showAiChat by rememberSaveable { mutableStateOf(false) }
   var showSettingsDialog by remember { mutableStateOf(false) }
+  val snackbarHostState = remember { SnackbarHostState() }
 
   BackHandler(enabled = showAiChat) { showAiChat = false }
 
   Scaffold(
     modifier = modifier,
     containerColor = MaterialTheme.colorScheme.background,
+    snackbarHost = { SnackbarHost(snackbarHostState) },
     bottomBar = {
       if (!showAiChat) {
         NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
@@ -136,9 +143,13 @@ fun RecoveryApp(modelManagerViewModel: ModelManagerViewModel, modifier: Modifier
     },
   ) { innerPadding ->
     when (selectedTab) {
-      RecoveryTab.LOG -> RecoveryLogScreen(contentPadding = innerPadding)
+      RecoveryTab.LOG -> RecoveryLogScreen(
+        contentPadding = innerPadding,
+        viewModel = recoveryViewModel,
+        snackbarHostState = snackbarHostState
+      )
       RecoveryTab.INSIGHTS -> RecoveryInsightsScreen(contentPadding = innerPadding)
-      RecoveryTab.HISTORY -> RecoveryHistoryScreen(contentPadding = innerPadding)
+      RecoveryTab.HISTORY -> RecoveryHistoryScreen(contentPadding = innerPadding, viewModel = recoveryViewModel)
       RecoveryTab.AI -> {
         if (showAiChat) {
           LlmChatScreen(
@@ -216,21 +227,27 @@ private fun AiLauncherScreen(
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun RecoveryLogScreen(contentPadding: PaddingValues) {
-  var cravings by rememberSaveable { mutableFloatStateOf(1f) }
-  var mood by rememberSaveable { mutableFloatStateOf(5f) }
-  var sleepQuality by rememberSaveable { mutableFloatStateOf(5f) }
-  var stress by rememberSaveable { mutableFloatStateOf(1f) }
-  var socialConnection by rememberSaveable { mutableFloatStateOf(5f) }
-  var selfEfficacy by rememberSaveable { mutableFloatStateOf(5f) }
+private fun RecoveryLogScreen(
+  contentPadding: PaddingValues,
+  viewModel: RecoveryViewModel,
+  snackbarHostState: SnackbarHostState
+) {
+  var cravings by rememberSaveable { mutableFloatStateOf(0f) }
+  var mood by rememberSaveable { mutableFloatStateOf(0f) }
+  var sleepQuality by rememberSaveable { mutableFloatStateOf(0f) }
+  var stress by rememberSaveable { mutableFloatStateOf(0f) }
+  var socialConnection by rememberSaveable { mutableFloatStateOf(0f) }
+  var selfEfficacy by rememberSaveable { mutableFloatStateOf(0f) }
   var note by rememberSaveable { mutableStateOf("") }
 
-  var showImmediateTrigger by rememberSaveable { mutableStateOf(false) }
   var immediateTriggerNote by rememberSaveable { mutableStateOf("") }
   var selectedTriggerOption by rememberSaveable { mutableStateOf<String?>(null) }
+  
+  val scope = rememberCoroutineScope()
 
   val triggerOptions = remember {
     listOf(
+      "None",
       "Interpersonal Conflict",
       "Social Pressure to Use",
       "Exposure to Substance Cues (places/people)",
@@ -323,7 +340,7 @@ private fun RecoveryLogScreen(contentPadding: PaddingValues) {
           label = "Self-efficacy",
           description = "How confident are you in staying sober tomorrow?",
           value = selfEfficacy,
-          valueLabel = selfEfficacy.toInt().toString(),
+          valueLabel = if (selfEfficacy == 0f) "Not set" else selfEfficacy.toInt().toString(),
           lowLabel = "Unsure",
           highLabel = "Grounded",
           onValueChange = { selfEfficacy = it },
@@ -332,92 +349,43 @@ private fun RecoveryLogScreen(contentPadding: PaddingValues) {
     }
 
     item {
-      Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Button(
-          onClick = {
-            showImmediateTrigger = !showImmediateTrigger
-            if (!showImmediateTrigger) {
-              selectedTriggerOption = null
-              immediateTriggerNote = ""
-            }
-          },
-          modifier = Modifier.fillMaxWidth(),
-          shape = RoundedCornerShape(16.dp),
+      SectionCard(
+        title = "Triggers Today",
+        subtitle = "Did anything specific trigger a craving or risk today?"
+      ) {
+        FlowRow(
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-          Text("LOG TRIGGER", fontWeight = FontWeight.Bold)
+          triggerOptions.forEach { option ->
+            val selected = selectedTriggerOption == option
+            AssistChip(
+              onClick = { selectedTriggerOption = option },
+              label = { Text(option) },
+              colors = if (selected) {
+                AssistChipDefaults.assistChipColors(
+                  containerColor = MaterialTheme.colorScheme.primary,
+                  labelColor = MaterialTheme.colorScheme.onPrimary
+                )
+              } else {
+                AssistChipDefaults.assistChipColors()
+              }
+            )
+          }
         }
 
-        if (showImmediateTrigger) {
-          Card(
-            shape = RoundedCornerShape(20.dp),
-            colors =
-              CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-          ) {
-            Column(
-              modifier = Modifier.padding(16.dp),
-              verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-              Text(
-                "Log Trigger",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-              )
-
-              FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-              ) {
-                triggerOptions.forEach { option ->
-                  val selected = selectedTriggerOption == option
-                  AssistChip(
-                    onClick = { selectedTriggerOption = option },
-                    label = { Text(option) },
-                    colors = if (selected) {
-                      AssistChipDefaults.assistChipColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        labelColor = MaterialTheme.colorScheme.onPrimary
-                      )
-                    } else {
-                      AssistChipDefaults.assistChipColors()
-                    }
-                  )
-                }
-              }
-
-              if (selectedTriggerOption == "Other") {
-                OutlinedTextField(
-                  value = immediateTriggerNote,
-                  onValueChange = { immediateTriggerNote = it },
-                  modifier = Modifier.fillMaxWidth(),
-                  placeholder = { Text("What's happening right now?") },
-                  colors =
-                    OutlinedTextFieldDefaults.colors(
-                      focusedContainerColor = MaterialTheme.colorScheme.surface,
-                      unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    ),
-                )
-              }
-
-              Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = {
-                  showImmediateTrigger = false
-                  selectedTriggerOption = null
-                  immediateTriggerNote = ""
-                }) { Text("Cancel") }
-                Button(
-                  onClick = {
-                    showImmediateTrigger = false
-                    selectedTriggerOption = null
-                    immediateTriggerNote = ""
-                  },
-                  enabled = selectedTriggerOption != null
-                ) {
-                  Text("Save Trigger")
-                }
-              }
-            }
-          }
+        if (selectedTriggerOption == "Other") {
+          Spacer(modifier = Modifier.height(8.dp))
+          OutlinedTextField(
+            value = immediateTriggerNote,
+            onValueChange = { immediateTriggerNote = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("What happened?") },
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedContainerColor = MaterialTheme.colorScheme.surface,
+              unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+            ),
+          )
         }
       }
     }
@@ -453,12 +421,56 @@ private fun RecoveryLogScreen(contentPadding: PaddingValues) {
           )
           Text(
             text =
-              "This footer is intentionally static for now. When the DB work lands, wire the primary action here to persist the slider values, tags, and note.",
+              "Persist your current state. This will save the slider values, trigger tags, and notes to the local database.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.86f),
           )
-          TextButton(onClick = {}) {
-            Text("Save Check-In Placeholder")
+          Button(
+            onClick = {
+              val isAllSlidersSet = cravings > 0 && mood > 0 && sleepQuality > 0 && 
+                                    stress > 0 && socialConnection > 0 && selfEfficacy > 0
+              val isTriggerSet = selectedTriggerOption != null
+              val isNoteSet = note.isNotBlank()
+              
+              if (!isAllSlidersSet || !isTriggerSet || !isNoteSet) {
+                scope.launch {
+                  snackbarHostState.showSnackbar("Please fill out all sliders, select a trigger, and add a reflection.")
+                }
+              } else {
+                viewModel.saveEntry(
+                  mood = mood.toInt(),
+                  sleepQuality = sleepQuality.toInt(),
+                  stressLevel = stress.toInt(),
+                  socialConnection = socialConnection.toInt(),
+                  cravingIntensity = cravings.toInt(),
+                  selfEfficacy = selfEfficacy.toInt(),
+                  trigger = if (selectedTriggerOption == "None") null else selectedTriggerOption,
+                  triggerNote = if (selectedTriggerOption == "Other") immediateTriggerNote else null,
+                  note = note
+                )
+                // Clear form after save
+                mood = 0f
+                sleepQuality = 0f
+                stress = 0f
+                socialConnection = 0f
+                cravings = 0f
+                selfEfficacy = 0f
+                note = ""
+                selectedTriggerOption = null
+                immediateTriggerNote = ""
+                
+                scope.launch {
+                  snackbarHostState.showSnackbar("Daily Check-In Saved")
+                }
+              }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+              containerColor = MaterialTheme.colorScheme.primary,
+              contentColor = MaterialTheme.colorScheme.onPrimary
+            )
+          ) {
+            Text("Save Daily Check-In")
           }
         }
       }
@@ -573,33 +585,8 @@ private fun RecoveryInsightsScreen(contentPadding: PaddingValues) {
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun RecoveryHistoryScreen(contentPadding: PaddingValues) {
-  val history =
-    remember {
-      listOf(
-        HistoryEntryUi(
-          date = "Today",
-          headline = "Stress-heavy afternoon, cravings manageable",
-          note = "User note placeholder for the daily check-in summary. Later this will come from storage.",
-          tags = listOf("Work stress", "Cravings", "Short sleep"),
-          riskLabel = "Moderate",
-        ),
-        HistoryEntryUi(
-          date = "Yesterday",
-          headline = "Quiet day, better structure by evening",
-          note = "Routine stayed more stable and there was contact with a supportive person.",
-          tags = listOf("Protective", "Routine", "Social contact"),
-          riskLabel = "Lower",
-        ),
-        HistoryEntryUi(
-          date = "Monday",
-          headline = "Isolation rose after work",
-          note = "No meeting attendance and energy fell off late in the day.",
-          tags = listOf("Isolation", "Skipped meeting", "Fatigue"),
-          riskLabel = "Elevated",
-        ),
-      )
-    }
+private fun RecoveryHistoryScreen(contentPadding: PaddingValues, viewModel: RecoveryViewModel) {
+  val history by viewModel.allEntries.collectAsState()
 
   LazyColumn(
     modifier =
@@ -633,6 +620,89 @@ private fun RecoveryHistoryScreen(contentPadding: PaddingValues) {
     items(history) { entry ->
       HistoryCard(entry = entry)
     }
+  }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun HistoryCard(entry: com.google.ai.edge.gallery.data.recovery.Entry) {
+  val dateStr = remember(entry.timestamp) {
+    val date = Date(entry.timestamp)
+    SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()).format(date)
+  }
+
+  Card(
+    shape = RoundedCornerShape(24.dp),
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+  ) {
+    Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Text(text = dateStr, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        if (entry.trigger != null) {
+          Box(
+            modifier =
+              Modifier.clip(RoundedCornerShape(999.dp))
+                .background(MaterialTheme.colorScheme.secondaryContainer)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+          ) {
+            Text(
+              text = entry.trigger,
+              style = MaterialTheme.typography.labelMedium,
+              color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+          }
+        }
+      }
+      
+      val headline = when {
+        entry.cravingIntensity >= 7 -> "High Cravings"
+        entry.stressLevel >= 7 -> "High Stress"
+        entry.mood <= 3 -> "Low Mood"
+        else -> "Steady Day"
+      }
+      
+      Text(text = headline, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+      
+      if (entry.note.isNotEmpty()) {
+        Text(
+          text = entry.note,
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          maxLines = 3,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        TagItem(label = "Mood: ${entry.mood}")
+        TagItem(label = "Stress: ${entry.stressLevel}")
+        TagItem(label = "Cravings: ${entry.cravingIntensity}")
+        TagItem(label = "Sleep: ${entry.sleepQuality}")
+        if (entry.triggerNote != null) {
+          TagItem(label = "Other: ${entry.triggerNote}")
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun TagItem(label: String) {
+  Box(
+    modifier =
+      Modifier.clip(RoundedCornerShape(999.dp))
+        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+        .padding(horizontal = 10.dp, vertical = 6.dp)
+  ) {
+    Text(
+      text = label,
+      style = MaterialTheme.typography.labelMedium,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
   }
 }
 
@@ -794,60 +864,5 @@ private fun EvidenceRow(label: String, detail: String) {
       color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     HorizontalDivider(modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
-  }
-}
-
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun HistoryCard(entry: HistoryEntryUi) {
-  Card(
-    shape = RoundedCornerShape(24.dp),
-    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-  ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Text(text = entry.date, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        Box(
-          modifier =
-            Modifier.clip(RoundedCornerShape(999.dp))
-              .background(MaterialTheme.colorScheme.secondaryContainer)
-              .padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-          Text(
-            text = entry.riskLabel,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-          )
-        }
-      }
-      Text(text = entry.headline, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-      Text(
-        text = entry.note,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 3,
-        overflow = TextOverflow.Ellipsis,
-      )
-      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        entry.tags.forEach { tag ->
-          Box(
-            modifier =
-              Modifier.clip(RoundedCornerShape(999.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-          ) {
-            Text(
-              text = tag,
-              style = MaterialTheme.typography.labelMedium,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-          }
-        }
-      }
-    }
   }
 }
