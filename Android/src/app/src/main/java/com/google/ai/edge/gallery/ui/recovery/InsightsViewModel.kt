@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.CheckInRepository
+import com.google.ai.edge.gallery.data.recovery.InsightRepository
 import com.google.ai.edge.gallery.proto.CheckInEntry
 import com.google.ai.edge.gallery.ui.llmchat.LlmModelInstance
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
@@ -27,28 +28,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val TAG = "InsightsViewModel"
-private const val MIN_ENTRIES = 4
-private const val PREFERRED_MODEL_NAME = "Gemma-3n-E2B-it"
-
-data class InsightItem(val text: String, val evidence: String)
+private const val MIN_ENTRIES = 5
+private const val PREFERRED_MODEL_NAME = "Gemma-4-E2B-it"
 
 sealed class GemmaInsightStatus {
   object NoModel : GemmaInsightStatus()
   object NotEnoughData : GemmaInsightStatus()
   object Idle : GemmaInsightStatus()
   object Loading : GemmaInsightStatus()
-  data class Done(
-    val patterns: List<InsightItem>,
-    val protective: List<InsightItem>,
-    val entryCount: Int,
-    val evidenceEntries: List<CheckInEntry> = emptyList(),
-  ) : GemmaInsightStatus()
+  data class Done(val generatedAt: Long) : GemmaInsightStatus()
   data class Error(val message: String) : GemmaInsightStatus()
 }
 
 data class InsightsUiState(
-  val earlySignals: List<String> = emptyList(),
-  val consistency: ConsistencyInsight? = null,
+  val snapshot: StoredInsightsSnapshot? = null,
   val gemmaStatus: GemmaInsightStatus = GemmaInsightStatus.Idle,
   val streamingText: String = "",
   val entryCount: Int = 0,
@@ -57,6 +50,7 @@ data class InsightsUiState(
 @HiltViewModel
 class InsightsViewModel @Inject constructor(
   private val checkInRepository: CheckInRepository,
+  private val insightRepository: InsightRepository,
   @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -64,19 +58,24 @@ class InsightsViewModel @Inject constructor(
   val uiState: StateFlow<InsightsUiState> = _uiState.asStateFlow()
 
   init {
-    loadRuleBasedInsights()
+    loadStoredInsights()
   }
 
-  fun refresh() = loadRuleBasedInsights()
+  fun refresh() = loadStoredInsights()
 
-  private fun loadRuleBasedInsights() {
+  private fun loadStoredInsights() {
     viewModelScope.launch(Dispatchers.Default) {
-      val entries = checkInRepository.getAllEntries()
+      val snapshot = insightRepository.getLatestSnapshot()
       _uiState.update {
         it.copy(
-          earlySignals = InsightsEngine.computeEarlySignals(entries),
-          consistency = InsightsEngine.computeConsistency(entries),
-          entryCount = entries.size,
+          snapshot = snapshot,
+          gemmaStatus =
+            if (snapshot != null && it.gemmaStatus !is GemmaInsightStatus.Loading) {
+              GemmaInsightStatus.Done(snapshot.generatedAt)
+            } else {
+              it.gemmaStatus
+            },
+          entryCount = checkInRepository.getEntryCount(),
         )
       }
     }
@@ -88,7 +87,7 @@ class InsightsViewModel @Inject constructor(
     val newStatus = when {
       model == null -> GemmaInsightStatus.NoModel
       entryCount < MIN_ENTRIES -> GemmaInsightStatus.NotEnoughData
-      _uiState.value.gemmaStatus is GemmaInsightStatus.Done -> _uiState.value.gemmaStatus
+      _uiState.value.snapshot != null -> GemmaInsightStatus.Done(_uiState.value.snapshot!!.generatedAt)
       else -> GemmaInsightStatus.Idle
     }
     _uiState.update { it.copy(gemmaStatus = newStatus, entryCount = entryCount) }
@@ -173,9 +172,39 @@ class InsightsViewModel @Inject constructor(
 
             override fun onDone() {
               Log.d(TAG, "Gemma Response: $rawResponse")
-              val parsed = parseGemmaResponse(rawResponse, entries.size, entries.take(3))
-              _uiState.update { it.copy(gemmaStatus = parsed, streamingText = "") }
-              analysisConversation.close()
+              viewModelScope.launch(Dispatchers.Default) {
+                val parsed = parseGemmaResponse(rawResponse)
+                when (parsed) {
+                  is ParsedGemmaError -> {
+                    _uiState.update {
+                      it.copy(
+                        gemmaStatus = GemmaInsightStatus.Error(parsed.message),
+                        streamingText = "",
+                      )
+                    }
+                  }
+                  is ParsedGemmaInsights -> {
+                    val snapshot = StoredInsightsSnapshot(
+                      generatedAt = System.currentTimeMillis(),
+                      entryCount = entries.size,
+                      earlySignals = InsightsEngine.computeEarlySignalItems(entries),
+                      recurringPatterns = parsed.patterns,
+                      protectiveFactors = parsed.protectiveFactors,
+                      consistency = InsightsEngine.computeConsistencyItems(entries),
+                    )
+                    insightRepository.saveSnapshot(snapshot)
+                    _uiState.update {
+                      it.copy(
+                        snapshot = snapshot,
+                        gemmaStatus = GemmaInsightStatus.Done(snapshot.generatedAt),
+                        streamingText = "",
+                        entryCount = entries.size,
+                      )
+                    }
+                  }
+                }
+                analysisConversation.close()
+              }
             }
 
             override fun onError(throwable: Throwable) {
@@ -204,36 +233,60 @@ class InsightsViewModel @Inject constructor(
     }
   }
 
-  private fun parseGemmaResponse(
-    raw: String,
-    entryCount: Int,
-    evidenceEntries: List<CheckInEntry>
-  ): GemmaInsightStatus {
+  private sealed interface ParsedGemmaResponse
+
+  private data class ParsedGemmaInsights(
+    val patterns: List<InsightItem>,
+    val protectiveFactors: List<InsightItem>,
+  ) : ParsedGemmaResponse
+
+  private data class ParsedGemmaError(
+    val message: String,
+  ) : ParsedGemmaResponse
+
+  private data class RawInsightItem(
+    val text: String = "",
+    val evidence: String = "",
+  )
+
+  private data class RawResponse(
+    val patterns: List<RawInsightItem> = emptyList(),
+    val protective: List<RawInsightItem> = emptyList(),
+    val protectiveFactors: List<RawInsightItem> = emptyList(),
+  )
+
+  private fun parseGemmaResponse(raw: String): ParsedGemmaResponse {
     return try {
       val start = raw.indexOf('{')
       val end = raw.lastIndexOf('}')
       if (start == -1 || end == -1) {
           Log.e(TAG, "JSON block not found in response: $raw")
-          return GemmaInsightStatus.Error("Invalid model output format.")
+          return ParsedGemmaError("Invalid model output format.")
       }
       val json = raw.substring(start, end + 1)
 
-      data class RawInsightItem(val text: String = "", val evidence: String = "")
-      data class RawResponse(
-        val patterns: List<RawInsightItem> = emptyList(),
-        val protective: List<RawInsightItem> = emptyList(),
-      )
-
       val parsed = Gson().fromJson(json, RawResponse::class.java)
-      GemmaInsightStatus.Done(
-        patterns = parsed.patterns.map { InsightItem(it.text, it.evidence) },
-        protective = parsed.protective.map { InsightItem(it.text, it.evidence) },
-        entryCount = entryCount,
-        evidenceEntries = evidenceEntries,
+      val patterns = parsed.patterns.mapNotNull(::toInsightItem).take(2)
+      val protectiveFactors = (parsed.protectiveFactors.ifEmpty { parsed.protective })
+        .mapNotNull(::toInsightItem)
+        .take(2)
+
+      if (patterns.isEmpty() || protectiveFactors.isEmpty()) {
+        return ParsedGemmaError("Model output was missing required sections.")
+      }
+
+      ParsedGemmaInsights(
+        patterns = patterns,
+        protectiveFactors = protectiveFactors,
       )
     } catch (e: Exception) {
       Log.e(TAG, "Parse failed. Raw: $raw", e)
-      GemmaInsightStatus.Error("Could not parse model output. Try again.")
+      ParsedGemmaError("Could not parse model output. Try again.")
     }
+  }
+
+  private fun toInsightItem(item: RawInsightItem): InsightItem? {
+    if (item.text.isBlank() || item.evidence.isBlank()) return null
+    return InsightItem(text = item.text.trim(), evidence = item.evidence.trim())
   }
 }

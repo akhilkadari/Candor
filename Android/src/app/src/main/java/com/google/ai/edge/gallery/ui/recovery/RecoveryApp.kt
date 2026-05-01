@@ -62,7 +62,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.ai.edge.gallery.proto.CheckInEntry
 import com.google.ai.edge.gallery.ui.home.SettingsDialog
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private enum class RecoveryTab(val label: String, val badge: String) {
@@ -193,7 +195,7 @@ private fun RecoveryLogScreen(
       RecoveryHeroCard(
         eyebrow = eyebrow,
         title = "Capture today before the hard parts blur together.",
-        body = "Track recovery-relevant signals now. Your insights will update automatically.",
+        body = "Track recovery-relevant signals now, then refresh the Insights tab to analyze the full log history.",
       )
     }
 
@@ -330,75 +332,72 @@ private fun RecoveryInsightsScreen(
     item {
       RecoveryHeroCard(
         eyebrow = "Insights",
-        title = "AI-driven patterns for your recovery.",
-        body = "Private, on-device analysis grounded in your check-in history.",
+        title = "Turn your log history into signals you can act on.",
+        body = "Gemma 4 E2B analyzes your saved check-ins on-device, then stores the latest insight snapshot here.",
       )
     }
 
-    // 1. Early Signals
+    uiState.snapshot?.let { snapshot ->
+      item {
+        SectionCard(
+          title = "Latest Analysis",
+          subtitle = "Updated ${formatInsightTimestamp(snapshot.generatedAt)} from ${snapshot.entryCount} check-ins."
+        ) {
+          Text(
+            text = "These sections stay saved after generation, so you can come back without re-running analysis every time.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+      }
+    }
+
     item {
       InsightSectionCard(
         title = "Early Signals",
         subtitle = "What has been shifting recently?",
-        items = uiState.earlySignals,
+        items = uiState.snapshot?.earlySignals.orEmpty(),
+        emptyMessage = "Generate insights to compare your latest check-ins against your recent baseline.",
         color = MaterialTheme.colorScheme.error
       )
     }
 
-    // 2. Recurring Patterns (Gemma)
-    // 3. Protective Factors (Gemma)
-    when (val status = uiState.gemmaStatus) {
-      is GemmaInsightStatus.Done -> {
-        item {
-          InsightSectionCard(
-            title = "Recurring Patterns",
-            subtitle = "What tends to happen together?",
-            items = status.patterns.map { "${it.text}\n• ${it.evidence}" },
-            color = Color(0xFFD55D3F)
-          )
-        }
-        item {
-          InsightSectionCard(
-            title = "Protective Factors",
-            subtitle = "What actually helps?",
-            items = status.protective.map { "${it.text}\n• ${it.evidence}" },
-            color = Color(0xFF317A52)
-          )
-        }
-      }
-      GemmaInsightStatus.Loading -> {
-        item {
-          Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-              CircularProgressIndicator()
-              Spacer(Modifier.height(8.dp))
-              Text("Analyzing history...", style = MaterialTheme.typography.bodyMedium)
-            }
-          }
-        }
-      }
-      else -> {
-        item {
-          Button(
-            onClick = { viewModel.generateInsights(modelManagerViewModel) },
-            modifier = Modifier.fillMaxWidth()
-          ) {
-            Text("Generate AI Insights")
-          }
-        }
-      }
+    item {
+      InsightSectionCard(
+        title = "Recurring Patterns",
+        subtitle = "What tends to happen together?",
+        items = uiState.snapshot?.recurringPatterns.orEmpty(),
+        emptyMessage = "Gemma will look for repeated multi-signal combinations across your past entries.",
+        color = Color(0xFFD55D3F)
+      )
     }
 
-    // 4. Consistency
-    uiState.consistency?.let { c ->
-      item {
-        InsightSectionCard(
-          title = "Consistency",
-          subtitle = "Behavioral engagement with your recovery.",
-          items = listOf(c.message),
-          color = MaterialTheme.colorScheme.primary
-        )
-      }
+    item {
+      InsightSectionCard(
+        title = "Protective Factors",
+        subtitle = "What actually helps?",
+        items = uiState.snapshot?.protectiveFactors.orEmpty(),
+        emptyMessage = "Positive correlations will show up here once the app analyzes enough history.",
+        color = Color(0xFF317A52)
+      )
+    }
+
+    item {
+      InsightSectionCard(
+        title = "Consistency And Behavior",
+        subtitle = "How consistent have you been?",
+        items = uiState.snapshot?.consistency.orEmpty(),
+        emptyMessage = "This section tracks streaks, missed days, and whether gaps line up with harder entries.",
+        color = MaterialTheme.colorScheme.primary
+      )
+    }
+
+    item {
+      InsightActionCard(
+        status = uiState.gemmaStatus,
+        hasStoredInsights = uiState.snapshot != null,
+        onGenerate = { viewModel.generateInsights(modelManagerViewModel) }
+      )
     }
   }
 }
@@ -502,7 +501,13 @@ private fun HistoryCard(entry: CheckInEntry, onEdit: () -> Unit) {
 }
 
 @Composable
-private fun InsightSectionCard(title: String, subtitle: String, items: List<String>, color: Color) {
+private fun InsightSectionCard(
+  title: String,
+  subtitle: String,
+  items: List<InsightItem>,
+  emptyMessage: String,
+  color: Color
+) {
   Card(
     shape = RoundedCornerShape(24.dp),
     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -514,9 +519,115 @@ private fun InsightSectionCard(title: String, subtitle: String, items: List<Stri
         Text(text = title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
       }
       Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-      
+
+      if (items.isEmpty()) {
+        Text(
+          text = emptyMessage,
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
+
       items.forEach { item ->
-        Text(text = item, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+        InsightEvidenceRow(item = item)
+      }
+    }
+  }
+}
+
+@Composable
+private fun InsightEvidenceRow(item: InsightItem) {
+  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Text(
+      text = item.text,
+      style = MaterialTheme.typography.bodyMedium,
+      color = MaterialTheme.colorScheme.onSurface,
+    )
+    Text(
+      text = item.evidence,
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+  }
+}
+
+@Composable
+private fun InsightActionCard(
+  status: GemmaInsightStatus,
+  hasStoredInsights: Boolean,
+  onGenerate: () -> Unit,
+) {
+  Card(
+    shape = RoundedCornerShape(24.dp),
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+  ) {
+    Column(
+      modifier = Modifier.fillMaxWidth().padding(20.dp),
+      verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+      Text(
+        text = if (hasStoredInsights) "Refresh Insights" else "Generate Insights",
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold,
+      )
+
+      when (status) {
+        GemmaInsightStatus.Loading -> {
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            Text(
+              text = "Gemma 4 E2B is analyzing your saved log history on-device.",
+              style = MaterialTheme.typography.bodyMedium,
+            )
+          }
+        }
+        GemmaInsightStatus.NoModel -> {
+          Text(
+            text = "Load `Gemma-4-E2B-it` on the main screen to generate or refresh insights. Saved insights remain visible below.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+        GemmaInsightStatus.NotEnoughData -> {
+          Text(
+            text = "Log at least 5 check-ins before generating insights. The page needs enough history to compare recent changes and recurring patterns.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+        is GemmaInsightStatus.Error -> {
+          Text(
+            text = status.message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+          )
+        }
+        is GemmaInsightStatus.Done -> {
+          Text(
+            text = "Run the model again whenever you want a fresh snapshot after new check-ins.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+        GemmaInsightStatus.Idle -> {
+          Text(
+            text = "This uses your saved history to generate four sections: early signals, recurring patterns, protective factors, and consistency.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+      }
+
+      val canGenerate = status !is GemmaInsightStatus.Loading &&
+        status !is GemmaInsightStatus.NoModel &&
+        status !is GemmaInsightStatus.NotEnoughData
+
+      Button(
+        onClick = onGenerate,
+        enabled = canGenerate,
+        modifier = Modifier.fillMaxWidth(),
+      ) {
+        Text(if (hasStoredInsights) "Refresh From History" else "Generate From History")
       }
     }
   }
@@ -580,6 +691,11 @@ private fun RecoveryHeroCard(eyebrow: String, title: String, body: String) {
       Text(text = body, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
   }
+}
+
+private fun formatInsightTimestamp(timestamp: Long): String {
+  val formatter = DateTimeFormatter.ofPattern("MMM d, h:mm a")
+  return Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()).format(formatter)
 }
 
 @Composable
