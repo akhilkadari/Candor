@@ -158,24 +158,9 @@ data class ModelManagerUiState(
   }
 }
 
-private val RESET_CONVERSATION_TURN_COUNT_CONFIG =
-  NumberSliderConfig(
-    key = ConfigKeys.RESET_CONVERSATION_TURN_COUNT,
-    sliderMin = 1f,
-    sliderMax = 30f,
-    defaultValue = 3f,
-    valueType = ValueType.INT,
-  )
-
 private val PREDEFINED_LLM_TASK_ORDER =
   listOf(
-    BuiltInTaskId.LLM_ASK_IMAGE,
-    BuiltInTaskId.LLM_ASK_AUDIO,
     BuiltInTaskId.LLM_CHAT,
-    BuiltInTaskId.LLM_AGENT_CHAT,
-    BuiltInTaskId.LLM_PROMPT_LAB,
-    BuiltInTaskId.LLM_TINY_GARDEN,
-    BuiltInTaskId.LLM_MOBILE_ACTIONS,
   )
 
 /**
@@ -290,8 +275,6 @@ constructor(
       status = ModelDownloadStatus(status = ModelDownloadStatusType.IN_PROGRESS),
     )
 
-    // TODO: b/494029782 - Both litertlm and aicore download and storage should be unified into a
-    // model repository.
     if (model.runtimeType == RuntimeType.AICORE) {
       AICoreModelHelper.downloadModel(
         context = context,
@@ -342,9 +325,6 @@ constructor(
   }
 
   fun cancelDownloadModel(model: Model) {
-    // TODO: b/494029782 - Both litertlm and aicore download and storage should be unified into a
-    // model repository.
-    // AICore models cannot be deleted from the download repository within the app.
     if (model.runtimeType == RuntimeType.AICORE) {
       return
     }
@@ -629,12 +609,6 @@ constructor(
     val setOfTasks =
       mutableSetOf(
         BuiltInTaskId.LLM_CHAT,
-        BuiltInTaskId.LLM_ASK_IMAGE,
-        BuiltInTaskId.LLM_ASK_AUDIO,
-        BuiltInTaskId.LLM_PROMPT_LAB,
-        BuiltInTaskId.LLM_TINY_GARDEN,
-        BuiltInTaskId.LLM_MOBILE_ACTIONS,
-        BuiltInTaskId.LLM_AGENT_CHAT,
       )
     for (task in getTasksByIds(ids = setOfTasks)) {
       // Remove duplicated imported model if existed.
@@ -643,24 +617,7 @@ constructor(
         Log.d(TAG, "duplicated imported model found in task. Removing it first")
         task.models.removeAt(modelIndex)
       }
-      if (
-        (task.id == BuiltInTaskId.LLM_ASK_IMAGE && model.llmSupportImage) ||
-          (task.id == BuiltInTaskId.LLM_ASK_AUDIO && model.llmSupportAudio) ||
-          (task.id == BuiltInTaskId.LLM_TINY_GARDEN && model.llmSupportTinyGarden) ||
-          (task.id == BuiltInTaskId.LLM_MOBILE_ACTIONS && model.llmSupportMobileActions) ||
-          (task.id != BuiltInTaskId.LLM_ASK_IMAGE &&
-            task.id != BuiltInTaskId.LLM_ASK_AUDIO &&
-            task.id != BuiltInTaskId.LLM_TINY_GARDEN &&
-            task.id != BuiltInTaskId.LLM_MOBILE_ACTIONS)
-      ) {
-        task.models.add(model)
-        if (task.id == BuiltInTaskId.LLM_TINY_GARDEN) {
-          val newConfigs = model.configs.toMutableList()
-          newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
-          model.configs = newConfigs
-          model.preProcess()
-        }
-      }
+      task.models.add(model)
       task.updateTrigger.value = System.currentTimeMillis()
     }
 
@@ -827,8 +784,6 @@ constructor(
     dataStoreRepository.clearAccessTokenData()
   }
 
-  // TODO: b/494029782 - Both litertlm and aicore download and storage should be unified into a
-  // model repository.
   private fun checkAICoreModelStatuses() {
     viewModelScope.launch(Dispatchers.Main) {
       val aicoreModels =
@@ -937,9 +892,6 @@ constructor(
         Log.d(TAG, "Allowlist: $modelAllowlist")
 
         val isAICoreAvailable by lazy {
-          // Build a fast-lookup set of all supported device models.
-          // This extracts the models from all allowed groups, flattens them into a single stream,
-          // lowercases them for case-insensitive matching, and stores them in a Set.
           val allowedDeviceModelsSet =
             modelAllowlist.aicoreRequirements
               ?.allowedDeviceGroups
@@ -962,10 +914,7 @@ constructor(
             continue
           }
 
-          // Ignore the allowedModel if its accelerator is only npu and this device's soc is not in
-          // its socToModelFiles.
-          val accelerators = allowedModel.defaultConfig.accelerators ?: ""
-          val acceleratorList = accelerators.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+          val acceleratorList = (allowedModel.defaultConfig.accelerators ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }
           if (acceleratorList.size == 1 && acceleratorList[0] == "npu") {
             val socToModelFiles = allowedModel.socToModelFiles
             if (socToModelFiles != null && !socToModelFiles.containsKey(SOC)) {
@@ -983,12 +932,6 @@ constructor(
           for (taskType in allowedModel.taskTypes) {
             val task = curTasks.find { it.id == taskType }
             task?.models?.add(model)
-
-            if (task?.id == BuiltInTaskId.LLM_TINY_GARDEN) {
-              val newConfigs = model.configs.toMutableList()
-              newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
-              model.configs = newConfigs
-            }
           }
         }
 
@@ -1087,7 +1030,6 @@ constructor(
       return false
     }
 
-    // A model is partially downloaded when the tmp file exists.
     val tmpFilePath =
       model.getPath(context = context, fileName = "${model.downloadFileName}.$TMP_FILE_EXT")
     return File(tmpFilePath).exists()
@@ -1130,24 +1072,6 @@ constructor(
 
       // Add to task.
       tasks.get(key = BuiltInTaskId.LLM_CHAT)?.models?.add(model)
-      tasks.get(key = BuiltInTaskId.LLM_PROMPT_LAB)?.models?.add(model)
-      tasks.get(key = BuiltInTaskId.LLM_AGENT_CHAT)?.models?.add(model)
-      if (model.llmSupportImage) {
-        tasks.get(key = BuiltInTaskId.LLM_ASK_IMAGE)?.models?.add(model)
-      }
-      if (model.llmSupportAudio) {
-        tasks.get(key = BuiltInTaskId.LLM_ASK_AUDIO)?.models?.add(model)
-      }
-      if (model.llmSupportTinyGarden) {
-        tasks.get(key = BuiltInTaskId.LLM_TINY_GARDEN)?.models?.add(model)
-        val newConfigs = model.configs.toMutableList()
-        newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
-        model.configs = newConfigs
-        model.preProcess()
-      }
-      if (model.llmSupportMobileActions) {
-        tasks.get(key = BuiltInTaskId.LLM_MOBILE_ACTIONS)?.models?.add(model)
-      }
 
       // Update status.
       modelDownloadStatus[model.name] =
@@ -1179,15 +1103,13 @@ constructor(
             Accelerator.GPU.label -> Accelerator.GPU
             Accelerator.CPU.label -> Accelerator.CPU
             Accelerator.NPU.label -> Accelerator.NPU
-            else -> null // Ignore unknown accelerator labels
+            else -> null
           }
         }
         .toMutableList()
     val llmMaxToken = info.llmConfig.defaultMaxTokens
     val llmSupportImage = info.llmConfig.supportImage
     val llmSupportAudio = info.llmConfig.supportAudio
-    val llmSupportTinyGarden = info.llmConfig.supportTinyGarden
-    val llmSupportMobileActions = info.llmConfig.supportMobileActions
     val llmSupportThinking = info.llmConfig.supportThinking
     val configs: MutableList<Config> =
       createLlmChatConfigs(
@@ -1211,8 +1133,6 @@ constructor(
         imported = true,
         llmSupportImage = llmSupportImage,
         llmSupportAudio = llmSupportAudio,
-        llmSupportTinyGarden = llmSupportTinyGarden,
-        llmSupportMobileActions = llmSupportMobileActions,
         capabilities =
           if (llmSupportThinking) listOf(ModelCapability.LLM_THINKING) else emptyList(),
         capabilityToTaskTypes =
@@ -1221,8 +1141,6 @@ constructor(
               ModelCapability.LLM_THINKING to
                 listOf(
                   BuiltInTaskId.LLM_CHAT,
-                  BuiltInTaskId.LLM_ASK_IMAGE,
-                  BuiltInTaskId.LLM_ASK_AUDIO,
                 )
             )
           } else {
@@ -1230,7 +1148,6 @@ constructor(
           },
         llmMaxToken = llmMaxToken,
         accelerators = accelerators,
-        // We assume all imported models are LLM for now.
         isLlm = true,
         runtimeType = RuntimeType.LITERT_LM,
       )
@@ -1243,20 +1160,15 @@ constructor(
     val tasks = getActiveCustomTasks().map { it.task }
 
     val categoryMap: Map<String, CategoryInfo> =
-      tasks.associateBy { it.category.id }.mapValues { it.value.category }
+      tasks.associateBy { it.category.id }.mapValues { it.category }
 
     val groupedTasks = tasks.groupBy { it.category.id }
     val groupedSortedTasks: MutableMap<String, List<Task>> = mutableMapOf()
-    // Sort the tasks in categories by pre-defined order. Sort other tasks by label.
     for (categoryId in groupedTasks.keys) {
       val sortedTasks =
         groupedTasks[categoryId]!!.sortedWith { a, b ->
           if (categoryId == Category.LLM.id) {
-            val order: List<String> =
-              when (categoryId) {
-                Category.LLM.id -> PREDEFINED_LLM_TASK_ORDER
-                else -> listOf()
-              }
+            val order: List<String> = PREDEFINED_LLM_TASK_ORDER
             val indexA = order.indexOf(a.id)
             val indexB = order.indexOf(b.id)
             if (indexA != -1 && indexB != -1) {
@@ -1296,13 +1208,6 @@ constructor(
     return context.getString(R.string.category_unlabeled)
   }
 
-  /**
-   * Retrieves the download status of a model.
-   *
-   * This function determines the download status of a given model by checking if it's fully
-   * downloaded, partially downloaded, or not downloaded at all. It also retrieves the received and
-   * total bytes for partially downloaded models.
-   */
   private fun getModelDownloadStatus(model: Model): ModelDownloadStatus {
     Log.d(TAG, "Checking model ${model.name} download status...")
 
@@ -1319,7 +1224,6 @@ constructor(
     var receivedBytes = 0L
     var totalBytes = 0L
 
-    // Partially downloaded.
     if (isModelPartiallyDownloaded(model = model)) {
       status = ModelDownloadStatusType.PARTIALLY_DOWNLOADED
       val tmpFilePath =
@@ -1329,12 +1233,10 @@ constructor(
       totalBytes = model.totalBytes
       Log.d(TAG, "${model.name} is partially downloaded. $receivedBytes/$totalBytes")
     }
-    // Fully downloaded.
     else if (isModelDownloaded(model = model)) {
       status = ModelDownloadStatusType.SUCCEEDED
       Log.d(TAG, "${model.name} has been downloaded.")
     }
-    // Not downloaded.
     else {
       Log.d(TAG, "${model.name} has not been downloaded.")
     }
@@ -1355,11 +1257,6 @@ constructor(
     }
   }
 
-  private fun isFileInDataLocalTmpDir(fileName: String): Boolean {
-    val file = File("/data/local/tmp", fileName)
-    return file.exists()
-  }
-
   private fun deleteFileFromExternalFilesDir(fileName: String) {
     if (isFileInExternalFilesDir(fileName)) {
       val file = File(externalFilesDir, fileName)
@@ -1367,10 +1264,6 @@ constructor(
     }
   }
 
-  /**
-   * Deletes files from the the model imports directory whose absolute paths start with a given
-   * prefix.
-   */
   private fun deleteFilesFromImportDir(fileName: String) {
     val dir = context.getExternalFilesDir(null) ?: return
 
@@ -1420,15 +1313,11 @@ constructor(
   @androidx.annotation.VisibleForTesting
   fun isModelDownloaded(model: Model): Boolean {
     model.updatable = false
-    // First, check if the model with the current (latest) version has been downloaded.
     if (checkIfModelDownloaded(model, model.version)) return true
 
-    // If not, check if any updatable model file (previous version) has been downloaded.
     for (updatableFile in model.updatableModelFiles) {
       if (updatableFile.commitHash.isEmpty()) continue
       if (checkIfModelDownloaded(model, updatableFile.commitHash, updatableFile.fileName)) {
-        // If an updatable version is found on the device, update the model's version and file name
-        // to match the downloaded one, and mark it as updatable.
         model.version = updatableFile.commitHash
         model.downloadFileName = updatableFile.fileName
         model.updatable = true
