@@ -3,6 +3,7 @@ package com.google.ai.edge.gallery.ui.recovery
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.data.CheckInRepository
+import com.google.ai.edge.gallery.data.recovery.RecoveryAnalysisService
 import com.google.ai.edge.gallery.proto.CheckInEntry
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
@@ -37,6 +38,7 @@ data class LogUiState(
 @HiltViewModel
 class RecoveryViewModel @Inject constructor(
   private val checkInRepository: CheckInRepository,
+  private val recoveryAnalysisService: RecoveryAnalysisService,
 ) : ViewModel() {
 
   private val _logUiState = MutableStateFlow(LogUiState())
@@ -123,6 +125,7 @@ class RecoveryViewModel @Inject constructor(
         .build()
 
       checkInRepository.addOrReplaceEntry(entry)
+      recoveryAnalysisService.onCheckInSaved(entry)
       _logUiState.update { it.copy(saveStatus = SaveStatus.SAVED) }
       refreshHistory()
 
@@ -148,6 +151,7 @@ class RecoveryViewModel @Inject constructor(
           EntryScenario.VOLATILE_ROLLERCOASTER -> generateVolatileDay(date, i, timestamp)
         }
         checkInRepository.addOrReplaceEntry(entry)
+        recoveryAnalysisService.onCheckInSaved(entry)
       }
       refreshHistory()
     }

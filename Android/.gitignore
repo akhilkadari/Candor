@@ -49,3 +49,6 @@ google-services.json
 *.hprof
 
 .DS_Store
+
+# Local-only model assets
+src/app/src/main/assets/recovery/embedder.tflite

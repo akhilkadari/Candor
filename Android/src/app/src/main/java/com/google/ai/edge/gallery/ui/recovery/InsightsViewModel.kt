@@ -9,7 +9,7 @@ import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.CheckInRepository
 import com.google.ai.edge.gallery.data.ConfigKeys
 import com.google.ai.edge.gallery.data.recovery.InsightRepository
-import com.google.ai.edge.gallery.proto.CheckInEntry
+import com.google.ai.edge.gallery.data.recovery.RecoveryAnalysisService
 import com.google.ai.edge.gallery.ui.llmchat.LlmModelInstance
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
@@ -31,8 +31,13 @@ import kotlinx.coroutines.launch
 
 private const val TAG = "InsightsViewModel"
 private const val MIN_ENTRIES = 5
-private const val PREFERRED_MODEL_NAME = "Gemma-4-E2B-it"
-private const val PREFERRED_MODEL_FILE = "gemma-4-E2B-it_qualcomm_sm8750.litertlm"
+private val PREFERRED_MODEL_NAMES = listOf(
+  "Gemma-4-E2B-it",
+  "Gemma-4-E4B-it",
+  "Gemma-3n-E2B-it",
+  "Gemma-3n-E4B-it",
+  "Gemma3-1B-IT",
+)
 
 sealed class GemmaInsightStatus {
   object NoModel : GemmaInsightStatus()
@@ -48,12 +53,16 @@ data class InsightsUiState(
   val gemmaStatus: GemmaInsightStatus = GemmaInsightStatus.Idle,
   val streamingText: String = "",
   val entryCount: Int = 0,
+  val insightsStale: Boolean = true,
+  val staleReason: String = "",
+  val embeddingStatusSummary: String = "",
 )
 
 @HiltViewModel
 class InsightsViewModel @Inject constructor(
   private val checkInRepository: CheckInRepository,
   private val insightRepository: InsightRepository,
+  private val recoveryAnalysisService: RecoveryAnalysisService,
   @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -69,6 +78,8 @@ class InsightsViewModel @Inject constructor(
   private fun loadStoredInsights() {
     viewModelScope.launch(Dispatchers.Default) {
       val snapshot = insightRepository.getLatestSnapshot()
+      val analysisState = recoveryAnalysisService.getAnalysisState()
+      val embeddingStatusSummary = recoveryAnalysisService.getEmbeddingHealthSummary()
       _uiState.update {
         it.copy(
           snapshot = snapshot,
@@ -79,6 +90,9 @@ class InsightsViewModel @Inject constructor(
               it.gemmaStatus
             },
           entryCount = checkInRepository.getEntryCount(),
+          insightsStale = analysisState.insightsStale,
+          staleReason = analysisState.staleReason,
+          embeddingStatusSummary = embeddingStatusSummary,
         )
       }
     }
@@ -97,9 +111,18 @@ class InsightsViewModel @Inject constructor(
   }
 
   private fun findAvailableModel(modelManagerViewModel: ModelManagerViewModel) =
-    modelManagerViewModel.getAllDownloadedModels().firstOrNull {
-      it.name == PREFERRED_MODEL_NAME && it.downloadFileName == PREFERRED_MODEL_FILE
-    }
+    modelManagerViewModel.getAllDownloadedModels()
+      .sortedBy { model ->
+        val preferredIndex = PREFERRED_MODEL_NAMES.indexOf(model.name)
+        if (preferredIndex >= 0) preferredIndex else Int.MAX_VALUE
+      }
+      .firstOrNull { model ->
+        val acceleratorConfig =
+          model.configs.firstOrNull { it.key == ConfigKeys.ACCELERATOR }
+            as? com.google.ai.edge.gallery.data.SegmentedButtonConfig
+        val options = acceleratorConfig?.options.orEmpty()
+        options.contains(Accelerator.GPU.label) || options.contains(Accelerator.CPU.label)
+      }
 
   fun generateInsights(modelManagerViewModel: ModelManagerViewModel) {
     if (_uiState.value.gemmaStatus is GemmaInsightStatus.Loading) return
@@ -121,26 +144,20 @@ class InsightsViewModel @Inject constructor(
         return@launch
       }
 
-      val requiredAccelerator = getRequiredNpuAccelerator(model)
-      if (requiredAccelerator == null) {
-        _uiState.update {
-          it.copy(gemmaStatus = GemmaInsightStatus.Error("This insights flow requires the SM8750 NPU Gemma 4 model."))
-        }
-        return@launch
-      }
+      val preferredAccelerator = getPreferredInsightAccelerator(model)
 
       val previousAccelerator =
         model.getStringConfigValue(
           key = ConfigKeys.ACCELERATOR,
-          defaultValue = requiredAccelerator,
+          defaultValue = preferredAccelerator,
         )
-      ensureNpuConfiguration(model, requiredAccelerator)
+      ensureModelAccelerator(model, preferredAccelerator)
       val initializationError =
-        ensureModelInitializedOnNpu(
+        ensureModelInitialized(
           modelManagerViewModel = modelManagerViewModel,
           task = task,
           model = model,
-          forceReinitialize = model.instance == null || previousAccelerator != requiredAccelerator,
+          forceReinitialize = model.instance == null || previousAccelerator != preferredAccelerator,
         )
 
       val instance = model.instance as? LlmModelInstance
@@ -150,7 +167,7 @@ class InsightsViewModel @Inject constructor(
             gemmaStatus =
               GemmaInsightStatus.Error(
                 initializationError
-                  ?: "Model could not be initialized with $requiredAccelerator using $PREFERRED_MODEL_FILE."
+                  ?: "Model could not be initialized for ${model.name} using $preferredAccelerator."
               )
           )
         }
@@ -163,7 +180,14 @@ class InsightsViewModel @Inject constructor(
         return@launch
       }
 
-      val prompt = InsightsEngine.buildInsightPrompt(entries)
+      val analysisState = recoveryAnalysisService.getAnalysisState()
+      val patternContext = recoveryAnalysisService.buildPatternContext(entries)
+      val prompt =
+        InsightsEngine.buildInsightPrompt(
+          entries = entries,
+          patternContext = patternContext,
+          staleReason = analysisState.staleReason.ifBlank { "Manual refresh requested." },
+        )
       Log.d(TAG, "Prompt: $prompt")
 
       // Ensure any existing conversation is closed before creating a new one
@@ -214,18 +238,30 @@ class InsightsViewModel @Inject constructor(
                     val snapshot = StoredInsightsSnapshot(
                       generatedAt = System.currentTimeMillis(),
                       entryCount = entries.size,
-                      earlySignals = parsed.earlySignals.ifEmpty { InsightsEngine.computeEarlySignalItems(entries) },
+                      earlySignals = InsightsEngine.computeEarlySignalItems(entries),
                       recurringPatterns = parsed.patterns,
                       protectiveFactors = parsed.protectiveFactors,
-                      consistency = parsed.consistency.ifEmpty { InsightsEngine.computeConsistencyItems(entries) },
+                      consistency = InsightsEngine.computeConsistencyItems(entries),
+                      retrievalSummary =
+                        "${patternContext.semanticMatches.size} semantic matches, ${patternContext.riskyMatches.size} risky evidence rows, ${patternContext.protectiveMatches.size} protective evidence rows.",
+                      embeddingStatusSummary = recoveryAnalysisService.getEmbeddingHealthSummary(),
+                      insightModelName = model.name,
+                      insightAccelerator = preferredAccelerator,
                     )
                     insightRepository.saveSnapshot(snapshot)
+                    recoveryAnalysisService.markInsightsFresh(
+                      modelName = model.name,
+                      accelerator = preferredAccelerator,
+                    )
                     _uiState.update {
                       it.copy(
                         snapshot = snapshot,
                         gemmaStatus = GemmaInsightStatus.Done(snapshot.generatedAt),
                         streamingText = "",
                         entryCount = entries.size,
+                        insightsStale = false,
+                        staleReason = "",
+                        embeddingStatusSummary = snapshot.embeddingStatusSummary,
                       )
                     }
                   }
@@ -260,19 +296,18 @@ class InsightsViewModel @Inject constructor(
     }
   }
 
-  private fun getRequiredNpuAccelerator(model: com.google.ai.edge.gallery.data.Model): String? {
+  private fun getPreferredInsightAccelerator(model: com.google.ai.edge.gallery.data.Model): String {
     val acceleratorConfig =
       model.configs.firstOrNull { it.key == ConfigKeys.ACCELERATOR }
         as? com.google.ai.edge.gallery.data.SegmentedButtonConfig
     val options = acceleratorConfig?.options.orEmpty()
     return when {
-      options.contains(Accelerator.NPU.label) -> Accelerator.NPU.label
-      options.contains(Accelerator.TPU.label) -> Accelerator.TPU.label
-      else -> null
+      options.contains(Accelerator.GPU.label) -> Accelerator.GPU.label
+      else -> Accelerator.CPU.label
     }
   }
 
-  private fun ensureNpuConfiguration(
+  private fun ensureModelAccelerator(
     model: com.google.ai.edge.gallery.data.Model,
     accelerator: String,
   ) {
@@ -281,7 +316,7 @@ class InsightsViewModel @Inject constructor(
     model.configValues = newConfigValues
   }
 
-  private suspend fun ensureModelInitializedOnNpu(
+  private suspend fun ensureModelInitialized(
     modelManagerViewModel: ModelManagerViewModel,
     task: com.google.ai.edge.gallery.data.Task,
     model: com.google.ai.edge.gallery.data.Model,
@@ -323,10 +358,8 @@ class InsightsViewModel @Inject constructor(
   private sealed interface ParsedGemmaResponse
 
   private data class ParsedGemmaInsights(
-    val earlySignals: List<InsightItem>,
     val patterns: List<InsightItem>,
     val protectiveFactors: List<InsightItem>,
-    val consistency: List<InsightItem>,
   ) : ParsedGemmaResponse
 
   private data class ParsedGemmaError(
@@ -339,48 +372,34 @@ class InsightsViewModel @Inject constructor(
   )
 
   private data class RawResponse(
-    val earlySignals: List<RawInsightItem> = emptyList(),
     val patterns: List<RawInsightItem> = emptyList(),
     val protective: List<RawInsightItem> = emptyList(),
     val protectiveFactors: List<RawInsightItem> = emptyList(),
-    val consistency: List<RawInsightItem> = emptyList(),
   )
 
   private fun parseGemmaResponse(raw: String): ParsedGemmaResponse {
     return try {
-      // Strip markdown fences the model may add despite instructions
-      val cleaned = raw.replace("```json", "").replace("```", "")
-
-      // Search for the JSON block
-      val start = cleaned.indexOf('{')
-      val end = cleaned.lastIndexOf('}')
-
+      val start = raw.indexOf('{')
+      val end = raw.lastIndexOf('}')
       if (start == -1 || end == -1 || start >= end) {
         Log.e(TAG, "JSON block not found in response: $raw")
         return ParsedGemmaError("Invalid model output format.")
       }
-      val json = cleaned.substring(start, end + 1)
+      val json = raw.substring(start, end + 1)
 
       val parsed = Gson().fromJson(json, RawResponse::class.java)
-      
-      val earlySignals = (parsed.earlySignals ?: emptyList()).mapNotNull(::toInsightItem).take(2)
-      val patterns = (parsed.patterns ?: emptyList()).mapNotNull(::toInsightItem).take(2)
-      val protectiveFactors = ((parsed.protectiveFactors ?: emptyList()).ifEmpty { parsed.protective ?: emptyList() })
+      val patterns = parsed.patterns.mapNotNull(::toInsightItem).take(2)
+      val protectiveFactors = parsed.protectiveFactors.ifEmpty { parsed.protective }
         .mapNotNull(::toInsightItem)
         .take(2)
-      val consistency = (parsed.consistency ?: emptyList()).mapNotNull(::toInsightItem).take(2)
 
-      // We require patterns and protectiveFactors from the model. 
-      // Early signals and consistency can fall back to local logic if the model misses them.
       if (patterns.isEmpty() || protectiveFactors.isEmpty()) {
-        return ParsedGemmaError("Model output was missing required sections (Patterns or Protective Factors).")
+        return ParsedGemmaError("Model output was missing required sections.")
       }
 
       ParsedGemmaInsights(
-        earlySignals = earlySignals,
         patterns = patterns,
         protectiveFactors = protectiveFactors,
-        consistency = consistency,
       )
     } catch (e: Exception) {
       Log.e(TAG, "Parse failed. Raw: $raw", e)
