@@ -75,6 +75,7 @@ private enum class RecoveryTab(val label: String, val badge: String) {
   LOG("Log", "L"),
   INSIGHTS("Insights", "I"),
   HISTORY("History", "H"),
+  AI("AI", "G"),
 }
 
 @Composable
@@ -85,6 +86,7 @@ fun RecoveryApp(
   insightsViewModel: InsightsViewModel = hiltViewModel()
 ) {
   var selectedTab by rememberSaveable { mutableStateOf(RecoveryTab.LOG) }
+  var showAiChat by rememberSaveable { mutableStateOf(false) }
   var showSettingsDialog by remember { mutableStateOf(false) }
   val snackbarHostState = remember { SnackbarHostState() }
 
@@ -103,39 +105,41 @@ fun RecoveryApp(
     containerColor = MaterialTheme.colorScheme.background,
     snackbarHost = { SnackbarHost(snackbarHostState) },
     bottomBar = {
-      NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
-        RecoveryTab.values().forEach { tab ->
-          NavigationBarItem(
-            selected = selectedTab == tab,
-            onClick = { selectedTab = tab },
-            icon = {
-              Box(
-                modifier =
-                  Modifier.size(28.dp)
-                    .clip(CircleShape)
-                    .background(
+      if (!showAiChat) {
+        NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
+          RecoveryTab.values().forEach { tab ->
+            NavigationBarItem(
+              selected = selectedTab == tab,
+              onClick = { selectedTab = tab },
+              icon = {
+                Box(
+                  modifier =
+                    Modifier.size(28.dp)
+                      .clip(CircleShape)
+                      .background(
+                        if (selectedTab == tab) {
+                          MaterialTheme.colorScheme.primary
+                        } else {
+                          MaterialTheme.colorScheme.surfaceContainerHigh
+                        }
+                      ),
+                  contentAlignment = Alignment.Center,
+                ) {
+                  Text(
+                    text = tab.badge,
+                    style = MaterialTheme.typography.labelLarge,
+                    color =
                       if (selectedTab == tab) {
-                        MaterialTheme.colorScheme.primary
+                        MaterialTheme.colorScheme.onPrimary
                       } else {
-                        MaterialTheme.colorScheme.surfaceContainerHigh
-                      }
-                    ),
-                contentAlignment = Alignment.Center,
-              ) {
-                Text(
-                  text = tab.badge,
-                  style = MaterialTheme.typography.labelLarge,
-                  color =
-                    if (selectedTab == tab) {
-                      MaterialTheme.colorScheme.onPrimary
-                    } else {
-                      MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
-              }
-            },
-            label = { Text(tab.label) },
-          )
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                      },
+                  )
+                }
+              },
+              label = { Text(tab.label) },
+            )
+          }
         }
       }
     },
@@ -154,6 +158,20 @@ fun RecoveryApp(
         contentPadding = innerPadding,
         viewModel = recoveryViewModel
       )
+      RecoveryTab.AI -> {
+        if (showAiChat) {
+          LlmChatScreen(
+            modelManagerViewModel = modelManagerViewModel,
+            navigateUp = { showAiChat = false },
+          )
+        } else {
+          AiLauncherScreen(
+            contentPadding = innerPadding,
+            onOpenChat = { showAiChat = true },
+            onOpenSettings = { showSettingsDialog = true },
+          )
+        }
+      }
     }
   }
 
@@ -163,6 +181,55 @@ fun RecoveryApp(
       modelManagerViewModel = modelManagerViewModel,
       onDismissed = { showSettingsDialog = false },
     )
+  }
+}
+
+@Composable
+private fun AiLauncherScreen(
+  contentPadding: PaddingValues,
+  onOpenChat: () -> Unit,
+  onOpenSettings: () -> Unit,
+) {
+  Column(
+    modifier =
+      Modifier.fillMaxSize()
+        .background(MaterialTheme.colorScheme.background)
+        .padding(contentPadding)
+        .padding(horizontal = 24.dp),
+    verticalArrangement = Arrangement.Center,
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    Text(
+      text = "Gemma 4",
+      style = MaterialTheme.typography.headlineLarge,
+      fontWeight = FontWeight.Bold,
+      color = MaterialTheme.colorScheme.onSurface,
+    )
+    Text(
+      text = "On-Device AI Chat",
+      style = MaterialTheme.typography.bodyLarge,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      modifier = Modifier.padding(top = 8.dp, bottom = 40.dp),
+    )
+    Button(
+      onClick = onOpenChat,
+      modifier = Modifier.fillMaxWidth(),
+    ) {
+      Text("Open Gemma 4 E2B Chat")
+    }
+    Spacer(modifier = Modifier.height(12.dp))
+    OutlinedButton(
+      onClick = onOpenSettings,
+      modifier = Modifier.fillMaxWidth(),
+    ) {
+      Icon(
+        imageVector = Icons.Rounded.Settings,
+        contentDescription = null,
+        modifier = Modifier.size(18.dp),
+      )
+      Spacer(modifier = Modifier.width(8.dp))
+      Text("Settings")
+    }
   }
 }
 
