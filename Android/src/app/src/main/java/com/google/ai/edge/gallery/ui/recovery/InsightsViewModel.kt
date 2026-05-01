@@ -214,10 +214,10 @@ class InsightsViewModel @Inject constructor(
                     val snapshot = StoredInsightsSnapshot(
                       generatedAt = System.currentTimeMillis(),
                       entryCount = entries.size,
-                      earlySignals = InsightsEngine.computeEarlySignalItems(entries),
+                      earlySignals = parsed.earlySignals.ifEmpty { InsightsEngine.computeEarlySignalItems(entries) },
                       recurringPatterns = parsed.patterns,
                       protectiveFactors = parsed.protectiveFactors,
-                      consistency = InsightsEngine.computeConsistencyItems(entries),
+                      consistency = parsed.consistency.ifEmpty { InsightsEngine.computeConsistencyItems(entries) },
                     )
                     insightRepository.saveSnapshot(snapshot)
                     _uiState.update {
@@ -323,8 +323,10 @@ class InsightsViewModel @Inject constructor(
   private sealed interface ParsedGemmaResponse
 
   private data class ParsedGemmaInsights(
+    val earlySignals: List<InsightItem>,
     val patterns: List<InsightItem>,
     val protectiveFactors: List<InsightItem>,
+    val consistency: List<InsightItem>,
   ) : ParsedGemmaResponse
 
   private data class ParsedGemmaError(
@@ -337,9 +339,11 @@ class InsightsViewModel @Inject constructor(
   )
 
   private data class RawResponse(
+    val earlySignals: List<RawInsightItem> = emptyList(),
     val patterns: List<RawInsightItem> = emptyList(),
     val protective: List<RawInsightItem> = emptyList(),
     val protectiveFactors: List<RawInsightItem> = emptyList(),
+    val consistency: List<RawInsightItem> = emptyList(),
   )
 
   private fun parseGemmaResponse(raw: String): ParsedGemmaResponse {
@@ -347,11 +351,8 @@ class InsightsViewModel @Inject constructor(
       // Strip markdown fences the model may add despite instructions
       val cleaned = raw.replace("```json", "").replace("```", "")
 
-      // The model sometimes echoes the JSON template before outputting actual data.
-      // Search backwards from the last "patterns" key to find the actual response block,
-      // skipping any earlier template echo.
-      val patternsIdx = cleaned.lastIndexOf("\"patterns\"")
-      val start = if (patternsIdx >= 0) cleaned.lastIndexOf('{', patternsIdx) else cleaned.indexOf('{')
+      // Search for the JSON block
+      val start = cleaned.indexOf('{')
       val end = cleaned.lastIndexOf('}')
 
       if (start == -1 || end == -1 || start >= end) {
@@ -361,19 +362,25 @@ class InsightsViewModel @Inject constructor(
       val json = cleaned.substring(start, end + 1)
 
       val parsed = Gson().fromJson(json, RawResponse::class.java)
-      // Gson does not use Kotlin default values for null JSON fields, so guard against null lists.
+      
+      val earlySignals = (parsed.earlySignals ?: emptyList()).mapNotNull(::toInsightItem).take(2)
       val patterns = (parsed.patterns ?: emptyList()).mapNotNull(::toInsightItem).take(2)
       val protectiveFactors = ((parsed.protectiveFactors ?: emptyList()).ifEmpty { parsed.protective ?: emptyList() })
         .mapNotNull(::toInsightItem)
         .take(2)
+      val consistency = (parsed.consistency ?: emptyList()).mapNotNull(::toInsightItem).take(2)
 
+      // We require patterns and protectiveFactors from the model. 
+      // Early signals and consistency can fall back to local logic if the model misses them.
       if (patterns.isEmpty() || protectiveFactors.isEmpty()) {
-        return ParsedGemmaError("Model output was missing required sections.")
+        return ParsedGemmaError("Model output was missing required sections (Patterns or Protective Factors).")
       }
 
       ParsedGemmaInsights(
+        earlySignals = earlySignals,
         patterns = patterns,
         protectiveFactors = protectiveFactors,
+        consistency = consistency,
       )
     } catch (e: Exception) {
       Log.e(TAG, "Parse failed. Raw: $raw", e)

@@ -130,31 +130,67 @@ class RecoveryViewModel @Inject constructor(
   fun seedMockData() {
     viewModelScope.launch {
       val now = LocalDate.now()
-      for (i in 1..21) {
+      // Generate 30 days of diverse data
+      for (i in 0..30) {
         val date = now.minusDays(i.toLong()).toString()
-        // Create some patterns: Every 4th day is high stress/craving, social days are better.
-        val isStressful = i % 4 == 0
-        val isSocial = i % 3 == 0
-        
-        val entry = CheckInEntry.newBuilder()
-          .setDate(date)
-          .setCravingIntensity(if (isStressful) 8 else 2)
-          .setMood(if (isStressful) 3 else 7)
-          .setStressLevel(if (isStressful) 9 else 3)
-          .setSocialConnection(if (isSocial) 8 else 3)
-          .setSelfEfficacy(if (isStressful) 4 else 9)
-          .addAllTriggers(
-            if (isStressful) listOf(TriggerKeys.WORK_STRESS, TriggerKeys.FINANCIAL_STRESS)
-            else if (isSocial) listOf(TriggerKeys.POSITIVE_CELEBRATION)
-            else listOf(TriggerKeys.NONE)
-          )
-          .setReflection(
-            if (isStressful) "Work was overwhelming today and I'm worried about bills. Felt a lot of pressure to use."
-            else if (isSocial) "Spent time with family and felt really supported. Mood is stable."
-            else "A quiet, routine day. No major issues."
-          )
-          .setTimestampMs(System.currentTimeMillis() - (i * 86400000L))
-          .build()
+        val timestamp = System.currentTimeMillis() - (i * 86400000L)
+
+        // Create different types of days
+        val entry = when {
+          i % 7 == 0 -> { // Weekly stressful work day
+            CheckInEntry.newBuilder()
+              .setDate(date)
+              .setCravingIntensity(7 + (i % 3))
+              .setMood(3 + (i % 2))
+              .setStressLevel(8 + (i % 2))
+              .setSocialConnection(4)
+              .setSelfEfficacy(5)
+              .addAllTriggers(listOf(TriggerKeys.WORK_STRESS, TriggerKeys.FINANCIAL_STRESS))
+              .setReflection("Mondays are tough. Work deadlines are piling up and I'm feeling the financial pressure. Managed to stay strong but the urge was definitely there.")
+              .setTimestampMs(timestamp)
+              .build()
+          }
+          i % 7 == 5 || i % 7 == 6 -> { // Weekends - Social/Substance cues
+            val highRisk = i % 14 == 6
+            CheckInEntry.newBuilder()
+              .setDate(date)
+              .setCravingIntensity(if (highRisk) 9 else 4)
+              .setMood(if (highRisk) 4 else 8)
+              .setStressLevel(if (highRisk) 6 else 2)
+              .setSocialConnection(if (highRisk) 2 else 9)
+              .setSelfEfficacy(if (highRisk) 3 else 8)
+              .addAllTriggers(if (highRisk) listOf(TriggerKeys.SOCIAL_PRESSURE, TriggerKeys.SUBSTANCE_CUES) else listOf(TriggerKeys.POSITIVE_CELEBRATION))
+              .setReflection(if (highRisk) "Went to a party where I didn't know many people. Seeing others use was very triggering and I felt out of place." else "Great weekend with family. Felt very supported and didn't even think about using.")
+              .setTimestampMs(timestamp)
+              .build()
+          }
+          i % 10 == 3 -> { // Interpersonal conflict day
+            CheckInEntry.newBuilder()
+              .setDate(date)
+              .setCravingIntensity(8)
+              .setMood(2)
+              .setStressLevel(7)
+              .setSocialConnection(1)
+              .setSelfEfficacy(4)
+              .addAllTriggers(listOf(TriggerKeys.INTERPERSONAL_CONFLICT))
+              .setReflection("Had a major argument with a close friend today. Feeling lonely and misunderstood. It's hard not to reach for old coping mechanisms when I'm this upset.")
+              .setTimestampMs(timestamp)
+              .build()
+          }
+          else -> { // Normal/Stable days
+            CheckInEntry.newBuilder()
+              .setDate(date)
+              .setCravingIntensity(1 + (i % 3))
+              .setMood(6 + (i % 3))
+              .setStressLevel(2 + (i % 3))
+              .setSocialConnection(7)
+              .setSelfEfficacy(8 + (i % 2))
+              .addAllTriggers(listOf(TriggerKeys.NONE))
+              .setReflection("A steady day. Focused on my routine and felt productive. Cravings were minimal and easily managed.")
+              .setTimestampMs(timestamp)
+              .build()
+          }
+        }
         checkInRepository.addOrReplaceEntry(entry)
       }
       refreshHistory()

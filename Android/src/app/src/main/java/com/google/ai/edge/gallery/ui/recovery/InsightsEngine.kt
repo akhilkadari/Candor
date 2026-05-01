@@ -42,7 +42,8 @@ object InsightsEngine {
   const val ANALYSIS_SYSTEM_INSTRUCTION = """
 You are a private, on-device recovery data analyst.
 Analyze personal check-in data and report patterns as brief, specific, data-grounded observations.
-Output only valid JSON. No disclaimers, no advice, no markdown fences, no text outside the JSON object.
+Output only valid JSON with four categories: earlySignals, patterns, protectiveFactors, and consistency. 
+No disclaimers, no advice, no markdown fences, no text outside the JSON object.
 """
 
   fun computeEarlySignalItems(entries: List<CheckInEntry>): List<InsightItem> {
@@ -268,8 +269,12 @@ Entries (newest first):
 $header
 $rows
 
-Return ONLY this JSON:
+Return ONLY this JSON structure, ensuring ALL 4 categories have exactly 2 items each:
 {
+  "earlySignals": [
+    {"text": "...", "evidence": "..."},
+    {"text": "...", "evidence": "..."}
+  ],
   "patterns": [
     {"text": "...", "evidence": "..."},
     {"text": "...", "evidence": "..."}
@@ -277,16 +282,25 @@ Return ONLY this JSON:
   "protectiveFactors": [
     {"text": "...", "evidence": "..."},
     {"text": "...", "evidence": "..."}
+  ],
+  "consistency": [
+    {"text": "...", "evidence": "..."},
+    {"text": "...", "evidence": "..."}
   ]
 }
 
-Requirements:
-- patterns: exactly 2 multi-signal observations; each must combine ≥2 different fields
-- protectiveFactors: exactly 2 positive correlations showing what correlates with better days
-- text: 1 short sentence in second person, grounded in this user's history
-- evidence: cite specific counts or timeframes ("on 4 of the past 7 days when...", "across your last 10 check-ins...")
-- Use natural language only; never reference field codes like "craving_intensity"
-- Do not give advice, warnings, or disclaimers
+Category Requirements:
+- earlySignals: Recent shifts (last 3-5 days) compared to previous baseline.
+- patterns: Repeated multi-signal combinations (e.g., "high stress usually follows social pressure").
+- protectiveFactors: Positive correlations (e.g., "days with high social connection correlate with lower cravings").
+- consistency: Observations on logging frequency, streaks, or gaps in data.
+
+General Requirements:
+- Each category MUST contain exactly 2 items.
+- text: 1 short sentence in second person, grounded in this user's specific history.
+- evidence: cite specific counts, dates, or timeframes.
+- Use natural language; never reference field codes like "craving_intensity".
+- Do not give advice, warnings, or disclaimers.
     """.trimIndent()
   }
 
