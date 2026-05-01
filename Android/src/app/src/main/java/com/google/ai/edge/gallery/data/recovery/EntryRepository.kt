@@ -25,6 +25,8 @@ class EntryRepository @Inject constructor(private val dao: EntryDao) {
       limit = limit,
     )
 
+  suspend fun getEntriesSince(from: Long): List<Entry> = dao.getEntriesSince(from)
+
   suspend fun delete(id: Long) = dao.deleteById(id)
 
   suspend fun deleteAll() = dao.deleteAll()
