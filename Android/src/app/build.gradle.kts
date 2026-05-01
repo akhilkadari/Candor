@@ -52,11 +52,6 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
-  packaging {
-    jniLibs {
-      useLegacyPackaging = true
-    }
-  }
   buildTypes {
     release {
       isMinifyEnabled = false
