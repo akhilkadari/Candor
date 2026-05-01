@@ -1159,9 +1159,6 @@ constructor(
   private fun groupTasksByCategory(): Map<String, List<Task>> {
     val tasks = getActiveCustomTasks().map { it.task }
 
-    val categoryMap: Map<String, CategoryInfo> =
-      tasks.associateBy { it.category.id }.mapValues { it.category }
-
     val groupedTasks = tasks.groupBy { it.category.id }
     val groupedSortedTasks: MutableMap<String, List<Task>> = mutableMapOf()
     for (categoryId in groupedTasks.keys) {
@@ -1178,11 +1175,7 @@ constructor(
             } else if (indexB != -1) {
               1
             } else {
-              val ca = categoryMap[a.id]!!
-              val cb = categoryMap[b.id]!!
-              val caLabel = getCategoryLabel(context = context, category = ca)
-              val cbLabel = getCategoryLabel(context = context, category = cb)
-              caLabel.compareTo(cbLabel)
+              a.label.compareTo(b.label)
             }
           } else {
             a.label.compareTo(b.label)
