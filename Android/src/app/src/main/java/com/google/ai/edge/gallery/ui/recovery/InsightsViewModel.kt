@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.data.CheckInRepository
+import com.google.ai.edge.gallery.proto.CheckInEntry
 import com.google.ai.edge.gallery.ui.llmchat.LlmModelInstance
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.litertlm.Content
@@ -113,7 +114,7 @@ class InsightsViewModel @Inject constructor(
       // Dedicated low-temperature analysis conversation — never touches the chat session
       val analysisConversation = instance.engine.createConversation(
         ConversationConfig(
-          samplerConfig = SamplerConfig(topK = 1, temperature = 0.1),
+          samplerConfig = SamplerConfig(topK = 1, temperature = 0.1, topP = 1.0),
           systemInstruction = Contents.of(
             listOf(Content.Text(InsightsEngine.ANALYSIS_SYSTEM_INSTRUCTION.trimIndent()))
           ),
