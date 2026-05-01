@@ -433,13 +433,31 @@ private fun RecoveryHistoryScreen(
         body = "View and edit your past entries to keep your record accurate.",
       )
       
-      // Temporary Seed Button for Testing
-      Button(
-        onClick = { viewModel.seedMockData() },
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
-      ) {
-        Text("Seed 21 Days of Mock Data")
+      SectionCard(title = "Stress Testing", subtitle = "Seed mock data scenarios for LLM analysis.") {
+        FlowRow(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          OutlinedButton(onClick = { viewModel.seedMockData() }) {
+            Text("Patterned")
+          }
+          OutlinedButton(onClick = { viewModel.seedScenarioCliff() }) {
+            Text("The Cliff")
+          }
+          OutlinedButton(onClick = { viewModel.seedScenarioVolatility() }) {
+            Text("Volatile")
+          }
+          OutlinedButton(onClick = { viewModel.seedScenarioSocialBuffer() }) {
+            Text("Social Buffer")
+          }
+          Button(
+            onClick = { viewModel.clearAllData() },
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
+          ) {
+            Text("Clear All")
+          }
+        }
       }
     }
 

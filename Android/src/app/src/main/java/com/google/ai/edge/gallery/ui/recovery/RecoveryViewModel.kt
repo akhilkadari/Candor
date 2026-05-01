@@ -127,8 +127,107 @@ class RecoveryViewModel @Inject constructor(
 
   fun getEntryCount(): Int = checkInRepository.getEntryCount()
 
+  fun clearAllData() {
+    viewModelScope.launch {
+      checkInRepository.clearAll()
+      refreshHistory()
+      resetForm()
+    }
+  }
+
+  fun seedScenarioCliff() {
+    viewModelScope.launch {
+      checkInRepository.clearAll()
+      val now = LocalDate.now()
+      // 14 days of strong recovery, then 7 days of "The Cliff"
+      for (i in 1..21) {
+        val date = now.minusDays(i.toLong()).toString()
+        val isCliff = i <= 7
+        
+        val entry = CheckInEntry.newBuilder()
+          .setDate(date)
+          .setCravingIntensity(if (isCliff) 4 + i else 1)
+          .setMood(if (isCliff) 8 - i else 9)
+          .setStressLevel(if (isCliff) 3 + i else 2)
+          .setSocialConnection(if (isCliff) 5 - (i / 2) else 8)
+          .setSelfEfficacy(if (isCliff) 7 - i else 10)
+          .addAllTriggers(
+            if (isCliff) listOf(TriggerKeys.WORK_STRESS, TriggerKeys.INTERPERSONAL_CONFLICT)
+            else listOf(TriggerKeys.NONE)
+          )
+          .setReflection(
+            if (isCliff) "Things are starting to fall apart. Stress at work is leaking into my home life."
+            else "Feeling very solid. Routine is working well."
+          )
+          .setTimestampMs(System.currentTimeMillis() - (i * 86400000L))
+          .build()
+        checkInRepository.addOrReplaceEntry(entry)
+      }
+      refreshHistory()
+    }
+  }
+
+  fun seedScenarioVolatility() {
+    viewModelScope.launch {
+      checkInRepository.clearAll()
+      val now = LocalDate.now()
+      for (i in 1..21) {
+        val date = now.minusDays(i.toLong()).toString()
+        // Random-ish but deterministic volatility
+        val seed = i * 13
+        val craving = (seed % 10) + 1
+        val mood = ((seed + 5) % 10) + 1
+        val stress = ((seed + 7) % 10) + 1
+        
+        val entry = CheckInEntry.newBuilder()
+          .setDate(date)
+          .setCravingIntensity(craving)
+          .setMood(mood)
+          .setStressLevel(stress)
+          .setSocialConnection(5)
+          .setSelfEfficacy(5)
+          .addAllTriggers(if (craving > 7) listOf(TriggerKeys.SUBSTANCE_CUES) else listOf(TriggerKeys.NONE))
+          .setReflection("Day $i: Just riding the waves. Some hours are fine, others are very intense.")
+          .setTimestampMs(System.currentTimeMillis() - (i * 86400000L))
+          .build()
+        checkInRepository.addOrReplaceEntry(entry)
+      }
+      refreshHistory()
+    }
+  }
+
+  fun seedScenarioSocialBuffer() {
+    viewModelScope.launch {
+      checkInRepository.clearAll()
+      val now = LocalDate.now()
+      for (i in 1..21) {
+        val date = now.minusDays(i.toLong()).toString()
+        // High stress throughout, but alternating high/low social support
+        val isSociallySupported = i % 2 == 0
+        
+        val entry = CheckInEntry.newBuilder()
+          .setDate(date)
+          .setCravingIntensity(if (isSociallySupported) 3 else 8)
+          .setMood(if (isSociallySupported) 6 else 3)
+          .setStressLevel(8) // Consistently high stress
+          .setSocialConnection(if (isSociallySupported) 9 else 2)
+          .setSelfEfficacy(if (isSociallySupported) 8 else 4)
+          .addAllTriggers(listOf(TriggerKeys.WORK_STRESS))
+          .setReflection(
+            if (isSociallySupported) "Work was crazy, but I talked it through with my sponsor/group and feel better."
+            else "Work was crazy and I feel totally alone in this. No one to talk to."
+          )
+          .setTimestampMs(System.currentTimeMillis() - (i * 86400000L))
+          .build()
+        checkInRepository.addOrReplaceEntry(entry)
+      }
+      refreshHistory()
+    }
+  }
+
   fun seedMockData() {
     viewModelScope.launch {
+      checkInRepository.clearAll()
       val now = LocalDate.now()
       for (i in 1..21) {
         val date = now.minusDays(i.toLong()).toString()
