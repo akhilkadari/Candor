@@ -1,90 +1,8 @@
-/*
- * Copyright 2025 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.google.ai.edge.gallery.ui.navigation
 
-import android.os.Bundle
-import android.util.Log
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.EaseOutExpo
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.FiniteAnimationSpec
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
-import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.navArgument
-import com.google.ai.edge.gallery.GalleryEvent
-import com.google.ai.edge.gallery.customtasks.common.CustomTaskData
-import com.google.ai.edge.gallery.customtasks.common.CustomTaskDataForBuiltinTask
-import com.google.ai.edge.gallery.data.ModelDownloadStatusType
-import com.google.ai.edge.gallery.data.Task
-import com.google.ai.edge.gallery.data.isLegacyTasks
-import com.google.ai.edge.gallery.firebaseAnalytics
-import com.google.ai.edge.gallery.ui.benchmark.BenchmarkScreen
-import com.google.ai.edge.gallery.ui.common.ErrorDialog
-import com.google.ai.edge.gallery.ui.common.ModelPageAppBar
-import com.google.ai.edge.gallery.ui.common.chat.ModelDownloadStatusInfoPanel
-import com.google.ai.edge.gallery.ui.home.HomeScreen
-import com.google.ai.edge.gallery.ui.home.PromoScreenGm4
-import com.google.ai.edge.gallery.ui.modelmanager.GlobalModelManager
-import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
-import com.google.ai.edge.gallery.ui.modelmanager.ModelManager
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.recovery.HistoryScreen
 import kotlinx.coroutines.Dispatchers
@@ -130,22 +48,8 @@ private fun AnimatedContentTransitionScope<*>.slideExit(): ExitTransition {
     towards = AnimatedContentTransitionScope.SlideDirection.Right,
   )
 }
+import com.google.ai.edge.gallery.ui.recovery.RecoveryApp
 
-private fun AnimatedContentTransitionScope<*>.slideUpEnter(): EnterTransition {
-  return slideIntoContainer(
-    animationSpec = enterTween(),
-    towards = AnimatedContentTransitionScope.SlideDirection.Up,
-  )
-}
-
-private fun AnimatedContentTransitionScope<*>.slideDownExit(): ExitTransition {
-  return slideOutOfContainer(
-    animationSpec = exitTween(),
-    towards = AnimatedContentTransitionScope.SlideDirection.Down,
-  )
-}
-
-/** Navigation routes. */
 @Composable
 fun GalleryNavHost(
   navController: NavHostController,
@@ -608,4 +512,5 @@ private fun CustomTaskScreen(
       },
     )
   }
+  RecoveryApp(modelManagerViewModel = modelManagerViewModel, modifier = modifier)
 }
