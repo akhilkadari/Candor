@@ -97,9 +97,25 @@ class RecoveryViewModel @Inject constructor(
 
   fun toggleTrigger(key: String) {
     _logUiState.update { state ->
-      val updated = if (key in state.selectedTriggers) state.selectedTriggers - key
-                    else state.selectedTriggers + key
-      state.copy(selectedTriggers = updated)
+      val newTriggers = state.selectedTriggers.toMutableSet()
+      if (key == TriggerKeys.NONE) {
+        // If "None" is selected, clear everything else and just keep "None"
+        newTriggers.clear()
+        newTriggers.add(TriggerKeys.NONE)
+      } else {
+        // If something else is selected, remove "None" first
+        newTriggers.remove(TriggerKeys.NONE)
+        if (newTriggers.contains(key)) {
+          newTriggers.remove(key)
+        } else {
+          newTriggers.add(key)
+        }
+        // If after toggling everything is empty, default back to "None"
+        if (newTriggers.isEmpty()) {
+          newTriggers.add(TriggerKeys.NONE)
+        }
+      }
+      state.copy(selectedTriggers = newTriggers)
     }
   }
 
