@@ -395,6 +395,7 @@ private fun RecoveryInsightsScreen(
     item {
       InsightActionCard(
         status = uiState.gemmaStatus,
+        currentAccelerator = uiState.currentAccelerator,
         hasStoredInsights = uiState.snapshot != null,
         onGenerate = { viewModel.generateInsights(modelManagerViewModel) }
       )
@@ -575,6 +576,7 @@ private fun InsightEvidenceRow(item: InsightItem) {
 @Composable
 private fun InsightActionCard(
   status: GemmaInsightStatus,
+  currentAccelerator: String?,
   hasStoredInsights: Boolean,
   onGenerate: () -> Unit,
 ) {
@@ -594,12 +596,27 @@ private fun InsightActionCard(
 
       when (status) {
         GemmaInsightStatus.Loading -> {
-          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            Text(
-              text = "Gemma 4 E2B is analyzing your saved log history on-device.",
-              style = MaterialTheme.typography.bodyMedium,
-            )
+          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+              CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+              Text(
+                text = "Gemma 4 E2B is analyzing your saved log history on-device.",
+                style = MaterialTheme.typography.bodyMedium,
+              )
+            }
+            currentAccelerator?.let { accel ->
+              Surface(
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                shape = RoundedCornerShape(8.dp),
+              ) {
+                Text(
+                  text = "Running on: $accel",
+                  style = MaterialTheme.typography.labelSmall,
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                  color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+              }
+            }
           }
         }
         GemmaInsightStatus.NoModel -> {

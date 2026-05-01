@@ -48,6 +48,7 @@ data class InsightsUiState(
   val gemmaStatus: GemmaInsightStatus = GemmaInsightStatus.Idle,
   val streamingText: String = "",
   val entryCount: Int = 0,
+  val currentAccelerator: String? = null,
 )
 
 @HiltViewModel
@@ -121,42 +122,65 @@ class InsightsViewModel @Inject constructor(
         return@launch
       }
 
-      val requiredAccelerator = getRequiredNpuAccelerator(model)
-      if (requiredAccelerator == null) {
-        _uiState.update {
-          it.copy(gemmaStatus = GemmaInsightStatus.Error("This insights flow requires the SM8750 NPU Gemma 4 model."))
-        }
-        return@launch
-      }
+      // Try accelerators in order of preference: NPU/TPU -> GPU -> CPU
+      val modelConfigs = model.configs.firstOrNull { it.key == ConfigKeys.ACCELERATOR }
+        as? com.google.ai.edge.gallery.data.SegmentedButtonConfig
+      val availableOptions = modelConfigs?.options.orEmpty()
+      
+      val preferredOrder = listOf(
+        Accelerator.NPU.label,
+        Accelerator.TPU.label,
+        Accelerator.GPU.label,
+        Accelerator.CPU.label
+      )
+      
+      val acceleratorsToTry = preferredOrder.filter { availableOptions.contains(it) }
+      
+      var initializedInstance: LlmModelInstance? = null
+      var lastError: String? = null
 
-      val previousAccelerator =
-        model.getStringConfigValue(
-          key = ConfigKeys.ACCELERATOR,
-          defaultValue = requiredAccelerator,
-        )
-      ensureNpuConfiguration(model, requiredAccelerator)
-      val initializationError =
-        ensureModelInitializedOnNpu(
+      for (accelerator in acceleratorsToTry) {
+        Log.d(TAG, "Attempting to initialize model on $accelerator")
+        _uiState.update { it.copy(currentAccelerator = "Initializing on $accelerator...") }
+        
+        val previousAccelerator = model.getStringConfigValue(ConfigKeys.ACCELERATOR)
+        
+        // Update model config to this accelerator
+        val newConfigValues = model.configValues.toMutableMap()
+        newConfigValues[ConfigKeys.ACCELERATOR.label] = accelerator
+        model.configValues = newConfigValues
+
+        val initError = ensureModelInitializedOnAccelerator(
           modelManagerViewModel = modelManagerViewModel,
           task = task,
           model = model,
-          forceReinitialize = model.instance == null || previousAccelerator != requiredAccelerator,
+          forceReinitialize = model.instance == null || previousAccelerator != accelerator,
         )
 
-      val instance = model.instance as? LlmModelInstance
-      if (instance == null) {
+        val instance = model.instance as? LlmModelInstance
+        if (instance != null) {
+          Log.i(TAG, "Successfully initialized model on $accelerator")
+          initializedInstance = instance
+          _uiState.update { it.copy(currentAccelerator = accelerator) }
+          break
+        } else {
+          lastError = initError ?: "Failed to initialize on $accelerator"
+          Log.w(TAG, "Failed to initialize on $accelerator: $lastError")
+        }
+      }
+
+      if (initializedInstance == null) {
         _uiState.update {
           it.copy(
-            gemmaStatus =
-              GemmaInsightStatus.Error(
-                initializationError
-                  ?: "Model could not be initialized with $requiredAccelerator using $PREFERRED_MODEL_FILE."
-              )
+            gemmaStatus = GemmaInsightStatus.Error(
+              lastError ?: "Could not initialize model on any available accelerator."
+            )
           )
         }
         return@launch
       }
 
+      val instance = initializedInstance
       val entries = checkInRepository.getRecentEntries(30)
       if (entries.size < MIN_ENTRIES) {
         _uiState.update { it.copy(gemmaStatus = GemmaInsightStatus.NotEnoughData) }
@@ -260,36 +284,16 @@ class InsightsViewModel @Inject constructor(
     }
   }
 
-  private fun getRequiredNpuAccelerator(model: com.google.ai.edge.gallery.data.Model): String? {
-    val acceleratorConfig =
-      model.configs.firstOrNull { it.key == ConfigKeys.ACCELERATOR }
-        as? com.google.ai.edge.gallery.data.SegmentedButtonConfig
-    val options = acceleratorConfig?.options.orEmpty()
-    return when {
-      options.contains(Accelerator.NPU.label) -> Accelerator.NPU.label
-      options.contains(Accelerator.TPU.label) -> Accelerator.TPU.label
-      else -> null
-    }
-  }
-
-  private fun ensureNpuConfiguration(
-    model: com.google.ai.edge.gallery.data.Model,
-    accelerator: String,
-  ) {
-    val newConfigValues = model.configValues.toMutableMap()
-    newConfigValues[ConfigKeys.ACCELERATOR.label] = accelerator
-    model.configValues = newConfigValues
-  }
-
-  private suspend fun ensureModelInitializedOnNpu(
+  private suspend fun ensureModelInitializedOnAccelerator(
     modelManagerViewModel: ModelManagerViewModel,
     task: com.google.ai.edge.gallery.data.Task,
     model: com.google.ai.edge.gallery.data.Model,
     forceReinitialize: Boolean,
   ): String? {
+    val currentAccelerator = model.getStringConfigValue(ConfigKeys.ACCELERATOR)
     Log.d(
       TAG,
-      "Initializing insights model with file ${model.downloadFileName} on ${model.getStringConfigValue(ConfigKeys.ACCELERATOR)} force=$forceReinitialize"
+      "Ensuring insights model ${model.name} is initialized on $currentAccelerator (force=$forceReinitialize)"
     )
 
     if (model.instance != null && !forceReinitialize) {
@@ -309,7 +313,7 @@ class InsightsViewModel @Inject constructor(
 
       if (initStatus?.status == ModelInitializationStatusType.ERROR) {
         return initStatus.error.ifBlank {
-          "Failed to initialize ${model.name} on ${model.getStringConfigValue(ConfigKeys.ACCELERATOR)}."
+          "Failed to initialize ${model.name} on $currentAccelerator."
         }
       }
 
@@ -317,7 +321,7 @@ class InsightsViewModel @Inject constructor(
       retries--
     }
 
-    return "Timed out initializing ${model.name} on ${model.getStringConfigValue(ConfigKeys.ACCELERATOR)}."
+    return "Timed out initializing ${model.name} on $currentAccelerator."
   }
 
   private sealed interface ParsedGemmaResponse
