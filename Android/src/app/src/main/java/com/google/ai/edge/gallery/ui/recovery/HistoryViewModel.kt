@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.concurrent.TimeUnit
@@ -27,6 +28,8 @@ data class HistoryUiState(
   val calendarDays: List<DayData> = emptyList(),
   val recentEntries: List<Entry> = emptyList(),
   val streak: Int = 0,
+  val selectedDate: LocalDate? = null,
+  val selectedDayEntries: List<Entry> = emptyList(),
 )
 
 @HiltViewModel
@@ -76,6 +79,19 @@ class HistoryViewModel @Inject constructor(
         streak = streak,
       )
     }
+  }
+
+  fun selectDay(date: LocalDate) {
+    val current = _uiState.value
+    if (current.selectedDate == date) {
+      _uiState.value = current.copy(selectedDate = null, selectedDayEntries = emptyList())
+      return
+    }
+    val zone = ZoneId.systemDefault()
+    val dayEntries = current.recentEntries.filter { entry ->
+      Instant.ofEpochMilli(entry.timestamp).atZone(zone).toLocalDate() == date
+    }
+    _uiState.value = current.copy(selectedDate = date, selectedDayEntries = dayEntries)
   }
 
   private fun cravingToColor(craving: Int?): DayColor = when {

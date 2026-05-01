@@ -1,6 +1,13 @@
 package com.google.ai.edge.gallery.ui.recovery
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,6 +42,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.ai.edge.gallery.data.recovery.Entry
 import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 
@@ -41,7 +51,6 @@ private val ColorGood     = Color(0xFF4CAF82)
 private val ColorWatch    = Color(0xFFD4953A)
 private val ColorHighRisk = Color(0xFFD45A4A)
 private val ColorEmpty    = Color(0xFF2C2C2E)
-private val ColorSurface  = Color(0xFF1C1C1E)
 
 private fun DayColor.toColor(): Color = when (this) {
   DayColor.GOOD      -> ColorGood
@@ -120,7 +129,27 @@ fun HistoryScreen(
 
     // ── Calendar heatmap ─────────────────────────────────────────────────
     item {
-      CalendarHeatmap(days = state.calendarDays)
+      CalendarHeatmap(
+        days = state.calendarDays,
+        selectedDate = state.selectedDate,
+        onDayClick = { viewModel.selectDay(it) },
+      )
+    }
+
+    // ── Day detail panel ─────────────────────────────────────────────────
+    item {
+      AnimatedVisibility(
+        visible = state.selectedDate != null,
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut(),
+      ) {
+        state.selectedDate?.let { date ->
+          DayDetailPanel(
+            date = date,
+            entries = state.selectedDayEntries,
+          )
+        }
+      }
     }
 
     // ── Recent entries ────────────────────────────────────────────────────
@@ -154,10 +183,14 @@ fun HistoryScreen(
 }
 
 @Composable
-private fun CalendarHeatmap(days: List<DayData>) {
+internal fun CalendarHeatmap(
+  days: List<DayData>,
+  selectedDate: LocalDate?,
+  onDayClick: (LocalDate) -> Unit,
+) {
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    WeekRow(days = days.take(7))
-    WeekRow(days = days.drop(7))
+    WeekRow(days = days.take(7), selectedDate = selectedDate, onDayClick = onDayClick)
+    WeekRow(days = days.drop(7), selectedDate = selectedDate, onDayClick = onDayClick)
 
     Spacer(Modifier.height(4.dp))
     Row(
@@ -172,12 +205,19 @@ private fun CalendarHeatmap(days: List<DayData>) {
 }
 
 @Composable
-private fun WeekRow(days: List<DayData>) {
+private fun WeekRow(
+  days: List<DayData>,
+  selectedDate: LocalDate?,
+  onDayClick: (LocalDate) -> Unit,
+) {
   Row(
     modifier = Modifier.fillMaxWidth(),
     horizontalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     days.forEach { day ->
+      val isSelected = day.date == selectedDate
+      val isClickable = day.color != DayColor.EMPTY
+
       Column(
         modifier = Modifier.weight(1f),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -194,9 +234,114 @@ private fun WeekRow(days: List<DayData>) {
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(8.dp))
-            .background(day.color.toColor()),
+            .background(day.color.toColor())
+            .then(
+              if (isSelected) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp))
+              else Modifier
+            )
+            .then(
+              if (isClickable) Modifier.clickable { onDayClick(day.date) }
+              else Modifier
+            ),
         )
       }
+    }
+  }
+}
+
+@Composable
+internal fun DayDetailPanel(
+  date: LocalDate,
+  entries: List<Entry>,
+) {
+  val dateLabel = date.format(DateTimeFormatter.ofPattern("EEEE, MMM d"))
+
+  Card(
+    modifier = Modifier.fillMaxWidth(),
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    shape = RoundedCornerShape(14.dp),
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      Text(
+        text = dateLabel,
+        color = MaterialTheme.colorScheme.onSurface,
+        fontSize = 15.sp,
+        fontWeight = FontWeight.SemiBold,
+      )
+
+      if (entries.isEmpty()) {
+        Text(
+          text = "No entry logged for this day.",
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          fontSize = 13.sp,
+        )
+      } else {
+        entries.forEach { entry ->
+          if (entries.size > 1) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+          }
+          DayEntryDetail(entry = entry)
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun DayEntryDetail(entry: Entry) {
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      MetricChip(label = "Craving", value = entry.cravingIntensity)
+      MetricChip(label = "Mood", value = entry.mood)
+      MetricChip(label = "Stress", value = entry.stressLevel)
+      MetricChip(label = "Social", value = entry.socialConnection)
+    }
+
+    if (entry.note.isNotBlank()) {
+      Text(
+        text = entry.note,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 13.sp,
+        maxLines = 3,
+      )
+    }
+  }
+}
+
+@Composable
+private fun MetricChip(label: String, value: Int) {
+  val chipColor = when {
+    label == "Craving" && value >= 8 -> ColorHighRisk.copy(alpha = 0.2f)
+    label == "Craving" && value >= 5 -> ColorWatch.copy(alpha = 0.2f)
+    label == "Craving"               -> ColorGood.copy(alpha = 0.2f)
+    else                             -> MaterialTheme.colorScheme.surfaceContainerHighest
+  }
+  Box(
+    modifier = Modifier
+      .clip(RoundedCornerShape(8.dp))
+      .background(chipColor)
+      .padding(horizontal = 8.dp, vertical = 4.dp),
+  ) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+      Text(
+        text = value.toString(),
+        color = MaterialTheme.colorScheme.onSurface,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+      )
+      Text(
+        text = label,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 10.sp,
+      )
     }
   }
 }

@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.ai.edge.gallery.proto.CheckInEntry
 import com.google.ai.edge.gallery.ui.home.SettingsDialog
@@ -147,6 +148,7 @@ fun RecoveryApp(
       RecoveryTab.HISTORY -> RecoveryHistoryScreen(
         contentPadding = innerPadding,
         viewModel = recoveryViewModel,
+        historyViewModel = hiltViewModel(),
         onEditEntry = { entry ->
           recoveryViewModel.populateForm(entry)
           selectedTab = RecoveryTab.LOG
@@ -406,9 +408,11 @@ private fun RecoveryInsightsScreen(
 private fun RecoveryHistoryScreen(
   contentPadding: PaddingValues,
   viewModel: RecoveryViewModel,
+  historyViewModel: HistoryViewModel,
   onEditEntry: (CheckInEntry) -> Unit
 ) {
   val history by viewModel.historyEntries.collectAsState()
+  val historyState by historyViewModel.uiState.collectAsState()
 
   LazyColumn(
     modifier = Modifier.fillMaxSize().background(
@@ -426,13 +430,75 @@ private fun RecoveryHistoryScreen(
     ),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
+    // ── Calendar heatmap ──────────────────────────────────────────────────
+    item {
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+          text = "YOUR JOURNEY",
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          style = MaterialTheme.typography.labelSmall,
+          letterSpacing = 1.sp,
+          modifier = Modifier.padding(bottom = 2.dp),
+        )
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Text(
+            text = "History",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+          )
+          if (historyState.streak > 0) {
+            Box(
+              modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+              contentAlignment = Alignment.Center,
+            ) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "🔥", fontSize = 16.sp)
+                Spacer(Modifier.width(4.dp))
+                Text(
+                  text = "${historyState.streak}",
+                  color = MaterialTheme.colorScheme.onSurface,
+                  style = MaterialTheme.typography.titleMedium,
+                  fontWeight = FontWeight.Bold,
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+
+    item {
+      CalendarHeatmap(
+        days = historyState.calendarDays,
+        selectedDate = historyState.selectedDate,
+        onDayClick = { historyViewModel.selectDay(it) },
+      )
+    }
+
+    item {
+      if (historyState.selectedDate != null) {
+        DayDetailPanel(
+          date = historyState.selectedDate!!,
+          entries = historyState.selectedDayEntries,
+        )
+      }
+    }
+
     item {
       RecoveryHeroCard(
         eyebrow = "History",
         title = "Your recovery journey, day by day.",
         body = "View and edit your past entries to keep your record accurate.",
       )
-      
+
       SectionCard(title = "Stress Testing", subtitle = "Seed mock data scenarios for LLM analysis.") {
         FlowRow(
           modifier = Modifier.fillMaxWidth(),
