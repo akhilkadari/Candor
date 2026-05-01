@@ -159,6 +159,9 @@ private fun RecoveryLogScreen(
   val history by viewModel.historyEntries.collectAsState()
   val isEditing = uiState.date.isNotEmpty()
 
+  var hasStartedCheckIn by rememberSaveable { mutableStateOf(isEditing) }
+  var visibleQuestionCount by rememberSaveable { mutableStateOf(if (isEditing) 7 else 0) }
+
   val consistency = remember(history) {
     InsightsEngine.computeConsistency(history)
   }
@@ -179,104 +182,169 @@ private fun RecoveryLogScreen(
       )
     }
 
-    item {
-      SectionCard(title = "Core Metrics", subtitle = "Use the sliders to log intensity today.") {
-        TriggerSlider(
-          label = "Craving intensity",
-          description = "How strong were your urges to use today?",
-          value = uiState.cravingIntensity.toFloat(),
-          positiveDirection = false,
-          onValueChange = { viewModel.updateCravingIntensity(it.toInt()) }
-        )
-        TriggerSlider(
-          label = "Mood",
-          description = "Overall, how would you rate your mood today?",
-          value = uiState.mood.toFloat(),
-          positiveDirection = true,
-          onValueChange = { viewModel.updateMood(it.toInt()) }
-        )
-        TriggerSlider(
-          label = "Stress level",
-          description = "How stressed did you feel today?",
-          value = uiState.stressLevel.toFloat(),
-          positiveDirection = false,
-          onValueChange = { viewModel.updateStressLevel(it.toInt()) }
-        )
-        TriggerSlider(
-          label = "Social connection",
-          description = "How connected to others did you feel today?",
-          value = uiState.socialConnection.toFloat(),
-          positiveDirection = true,
-          onValueChange = { viewModel.updateSocialConnection(it.toInt()) }
-        )
-        TriggerSlider(
-          label = "Self-efficacy",
-          description = "How confident are you in staying sober tomorrow?",
-          value = uiState.selfEfficacy.toFloat(),
-          positiveDirection = true,
-          onValueChange = { viewModel.updateSelfEfficacy(it.toInt()) }
-        )
-      }
-    }
-
-    item {
-      SectionCard(title = "Triggers Today", subtitle = "Did any specific situation occur?") {
-        FlowRow(
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-          verticalArrangement = Arrangement.spacedBy(8.dp)
+    if (!hasStartedCheckIn) {
+      item {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 48.dp),
+          contentAlignment = Alignment.Center
         ) {
-          TriggerKeys.all.forEach { key ->
-            val selected = key in uiState.selectedTriggers
-            AssistChip(
-              onClick = { viewModel.toggleTrigger(key) },
-              label = { Text(TriggerKeys.displayLabels[key] ?: key) },
-              colors = if (selected) {
-                AssistChipDefaults.assistChipColors(
-                  containerColor = MaterialTheme.colorScheme.primary,
-                  labelColor = MaterialTheme.colorScheme.onPrimary
-                )
-              } else {
-                AssistChipDefaults.assistChipColors()
-              }
+          Button(
+            onClick = { hasStartedCheckIn = true },
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+              .height(64.dp)
+              .fillMaxWidth(0.8f),
+            colors = ButtonDefaults.buttonColors(
+              containerColor = MaterialTheme.colorScheme.primaryContainer,
+              contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            ),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+              Icon(Icons.Rounded.Edit, contentDescription = null)
+              Text("Log Your Day", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+          }
+        }
+      }
+    } else {
+      item {
+        SectionCard(title = "Core Metrics", subtitle = "Use the sliders to log intensity today.") {
+          TriggerSlider(
+            label = "Craving intensity",
+            description = "How strong were your urges to use today?",
+            value = uiState.cravingIntensity.toFloat(),
+            positiveDirection = false,
+            onValueChange = { viewModel.updateCravingIntensity(it.toInt()) },
+            onValueChangeFinished = { if (visibleQuestionCount < 1) visibleQuestionCount = 1 }
+          )
+
+          if (visibleQuestionCount >= 1) {
+            Spacer(modifier = Modifier.height(16.dp))
+            TriggerSlider(
+              label = "Mood",
+              description = "Overall, how would you rate your mood today?",
+              value = uiState.mood.toFloat(),
+              positiveDirection = true,
+              onValueChange = { viewModel.updateMood(it.toInt()) },
+              onValueChangeFinished = { if (visibleQuestionCount < 2) visibleQuestionCount = 2 }
+            )
+          }
+
+          if (visibleQuestionCount >= 2) {
+            Spacer(modifier = Modifier.height(16.dp))
+            TriggerSlider(
+              label = "Stress level",
+              description = "How stressed did you feel today?",
+              value = uiState.stressLevel.toFloat(),
+              positiveDirection = false,
+              onValueChange = { viewModel.updateStressLevel(it.toInt()) },
+              onValueChangeFinished = { if (visibleQuestionCount < 3) visibleQuestionCount = 3 }
+            )
+          }
+
+          if (visibleQuestionCount >= 3) {
+            Spacer(modifier = Modifier.height(16.dp))
+            TriggerSlider(
+              label = "Social connection",
+              description = "How connected to others did you feel today?",
+              value = uiState.socialConnection.toFloat(),
+              positiveDirection = true,
+              onValueChange = { viewModel.updateSocialConnection(it.toInt()) },
+              onValueChangeFinished = { if (visibleQuestionCount < 4) visibleQuestionCount = 4 }
+            )
+          }
+
+          if (visibleQuestionCount >= 4) {
+            Spacer(modifier = Modifier.height(16.dp))
+            TriggerSlider(
+              label = "Self-efficacy",
+              description = "How confident are you in staying sober tomorrow?",
+              value = uiState.selfEfficacy.toFloat(),
+              positiveDirection = true,
+              onValueChange = { viewModel.updateSelfEfficacy(it.toInt()) },
+              onValueChangeFinished = { if (visibleQuestionCount < 5) visibleQuestionCount = 5 }
             )
           }
         }
       }
-    }
 
-    item {
-      SectionCard(title = "Daily Reflection", subtitle = "General thoughts about your day.") {
-        OutlinedTextField(
-          value = uiState.reflection,
-          onValueChange = { viewModel.updateReflection(it) },
-          modifier = Modifier.fillMaxWidth(),
-          minLines = 4,
-          placeholder = { Text("What happened today? Any moments worth remembering?") }
-        )
-      }
-    }
-
-    item {
-      Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (isEditing) {
-          OutlinedButton(
-            onClick = { viewModel.resetForm() },
-            modifier = Modifier.weight(1f)
-          ) {
-            Text("Cancel Edit")
+      if (visibleQuestionCount >= 5) {
+        item {
+          SectionCard(title = "Triggers Today", subtitle = "Did any specific situation occur?") {
+            FlowRow(
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+              verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+              TriggerKeys.all.forEach { key ->
+                val selected = key in uiState.selectedTriggers
+                AssistChip(
+                  onClick = {
+                    viewModel.toggleTrigger(key)
+                    if (visibleQuestionCount < 6) visibleQuestionCount = 6
+                  },
+                  label = { Text(TriggerKeys.displayLabels[key] ?: key) },
+                  colors = if (selected) {
+                    AssistChipDefaults.assistChipColors(
+                      containerColor = MaterialTheme.colorScheme.primary,
+                      labelColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                  } else {
+                    AssistChipDefaults.assistChipColors()
+                  }
+                )
+              }
+            }
           }
         }
+      }
 
-        Button(
-          onClick = { viewModel.saveEntry() },
-          modifier = if (isEditing) Modifier.weight(1f) else Modifier.fillMaxWidth(),
-          enabled = uiState.saveStatus == SaveStatus.IDLE,
-          colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-        ) {
-          if (uiState.saveStatus == SaveStatus.SAVING) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-          } else {
-            Text(if (isEditing) "Update Check-In" else "Save Check-In")
+      if (visibleQuestionCount >= 6) {
+        item {
+          SectionCard(title = "Daily Reflection", subtitle = "General thoughts about your day.") {
+            OutlinedTextField(
+              value = uiState.reflection,
+              onValueChange = {
+                viewModel.updateReflection(it)
+                if (visibleQuestionCount < 7) visibleQuestionCount = 7
+              },
+              modifier = Modifier.fillMaxWidth(),
+              minLines = 4,
+              placeholder = { Text("What happened today? Any moments worth remembering?") }
+            )
+          }
+        }
+      }
+
+      if (visibleQuestionCount >= 7 || isEditing) {
+        item {
+          Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (isEditing) {
+              OutlinedButton(
+                onClick = { viewModel.resetForm() },
+                modifier = Modifier.weight(1f)
+              ) {
+                Text("Cancel Edit")
+              }
+            }
+
+            Button(
+              onClick = { viewModel.saveEntry() },
+              modifier = if (isEditing) Modifier.weight(1f) else Modifier.fillMaxWidth(),
+              enabled = uiState.saveStatus == SaveStatus.IDLE,
+              colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+              if (uiState.saveStatus == SaveStatus.SAVING) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+              } else {
+                Text(if (isEditing) "Update Check-In" else "Save Check-In")
+              }
+            }
           }
         }
       }
@@ -693,7 +761,8 @@ private fun TriggerSlider(
   description: String,
   value: Float,
   positiveDirection: Boolean,
-  onValueChange: (Float) -> Unit
+  onValueChange: (Float) -> Unit,
+  onValueChangeFinished: (() -> Unit)? = null
 ) {
   val fraction = ((value - 1f) / 9f).coerceIn(0f, 1f)
   val green = Color(0xFF4CAF50)
@@ -723,6 +792,7 @@ private fun TriggerSlider(
     Slider(
       value = value,
       onValueChange = onValueChange,
+      onValueChangeFinished = onValueChangeFinished,
       valueRange = 1f..10f,
       steps = 8,
       colors = SliderDefaults.colors(

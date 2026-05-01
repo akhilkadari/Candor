@@ -161,6 +161,10 @@ Output only valid JSON. No disclaimers, no advice, no markdown fences, no text o
 
     var streak = 0
     var cursor = today
+    // If user hasn't logged today, the streak is what they had as of yesterday.
+    if (!dates.contains(cursor)) {
+      cursor = today.minusDays(1)
+    }
     while (dates.contains(cursor)) {
       streak++
       cursor = cursor.minusDays(1)
