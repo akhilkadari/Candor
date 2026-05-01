@@ -24,7 +24,7 @@
         "temperature": 1.0,
         "maxContextLength": 32000,
         "maxTokens": 4000,
-        "accelerators": "npu,cpu",
+        "accelerators": "npu",
         "visionAccelerator": "gpu"
       },
       "taskTypes": [

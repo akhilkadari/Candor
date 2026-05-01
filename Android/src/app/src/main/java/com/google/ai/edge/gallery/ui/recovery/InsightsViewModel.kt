@@ -4,8 +4,10 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.ai.edge.gallery.data.Accelerator
 import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.CheckInRepository
+import com.google.ai.edge.gallery.data.ConfigKeys
 import com.google.ai.edge.gallery.data.recovery.InsightRepository
 import com.google.ai.edge.gallery.proto.CheckInEntry
 import com.google.ai.edge.gallery.ui.llmchat.LlmModelInstance
@@ -15,7 +17,6 @@ import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
-import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -30,6 +31,7 @@ import kotlinx.coroutines.launch
 private const val TAG = "InsightsViewModel"
 private const val MIN_ENTRIES = 5
 private const val PREFERRED_MODEL_NAME = "Gemma-4-E2B-it"
+private const val PREFERRED_MODEL_FILE = "gemma-4-E2B-it_qualcomm_sm8750.litertlm"
 
 sealed class GemmaInsightStatus {
   object NoModel : GemmaInsightStatus()
@@ -94,8 +96,9 @@ class InsightsViewModel @Inject constructor(
   }
 
   private fun findAvailableModel(modelManagerViewModel: ModelManagerViewModel) =
-    modelManagerViewModel.getAllDownloadedModels().firstOrNull { it.name == PREFERRED_MODEL_NAME }
-      ?: modelManagerViewModel.getAllDownloadedModels().firstOrNull()
+    modelManagerViewModel.getAllDownloadedModels().firstOrNull {
+      it.name == PREFERRED_MODEL_NAME && it.downloadFileName == PREFERRED_MODEL_FILE
+    }
 
   fun generateInsights(modelManagerViewModel: ModelManagerViewModel) {
     if (_uiState.value.gemmaStatus is GemmaInsightStatus.Loading) return
@@ -109,24 +112,35 @@ class InsightsViewModel @Inject constructor(
 
       _uiState.update { it.copy(gemmaStatus = GemmaInsightStatus.Loading, streamingText = "") }
 
-      // Initialize if needed
-      if (model.instance == null) {
-        Log.d(TAG, "Model instance null, initializing...")
-        val task = modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_CHAT)
-        if (task != null) {
-          modelManagerViewModel.initializeModel(context, task, model, force = false)
-          // Wait for initialization
-          var retries = 50
-          while (model.instance == null && retries > 0) {
-            kotlinx.coroutines.delay(200)
-            retries--
-          }
+      val task = modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_CHAT)
+      if (task == null) {
+        _uiState.update {
+          it.copy(gemmaStatus = GemmaInsightStatus.Error("LLM chat task is unavailable."))
         }
+        return@launch
       }
+
+      val requiredAccelerator = getRequiredNpuAccelerator(model)
+      if (requiredAccelerator == null) {
+        _uiState.update {
+          it.copy(gemmaStatus = GemmaInsightStatus.Error("This insights flow requires the SM8750 NPU Gemma 4 model."))
+        }
+        return@launch
+      }
+
+      ensureNpuConfiguration(model, requiredAccelerator)
+      ensureModelInitializedOnNpu(modelManagerViewModel, task, model)
 
       val instance = model.instance as? LlmModelInstance
       if (instance == null) {
-        _uiState.update { it.copy(gemmaStatus = GemmaInsightStatus.Error("Model could not be initialized.")) }
+        _uiState.update {
+          it.copy(
+            gemmaStatus =
+              GemmaInsightStatus.Error(
+                "Model could not be initialized with $requiredAccelerator using $PREFERRED_MODEL_FILE."
+              )
+          )
+        }
         return@launch
       }
 
@@ -151,7 +165,7 @@ class InsightsViewModel @Inject constructor(
 
       val analysisConversation = instance.engine.createConversation(
         ConversationConfig(
-          samplerConfig = SamplerConfig(topK = 1, temperature = 0.1, topP = 1.0),
+          samplerConfig = null,
           systemInstruction = Contents.of(
             listOf(Content.Text(InsightsEngine.ANALYSIS_SYSTEM_INSTRUCTION.trimIndent()))
           ),
@@ -230,6 +244,41 @@ class InsightsViewModel @Inject constructor(
         }
         analysisConversation.close()
       }
+    }
+  }
+
+  private fun getRequiredNpuAccelerator(model: com.google.ai.edge.gallery.data.Model): String? {
+    val acceleratorConfig =
+      model.configs.firstOrNull { it.key == ConfigKeys.ACCELERATOR }
+        as? com.google.ai.edge.gallery.data.SegmentedButtonConfig
+    val options = acceleratorConfig?.options.orEmpty()
+    return when {
+      options.contains(Accelerator.NPU.label) -> Accelerator.NPU.label
+      options.contains(Accelerator.TPU.label) -> Accelerator.TPU.label
+      else -> null
+    }
+  }
+
+  private fun ensureNpuConfiguration(
+    model: com.google.ai.edge.gallery.data.Model,
+    accelerator: String,
+  ) {
+    val newConfigValues = model.configValues.toMutableMap()
+    newConfigValues[ConfigKeys.ACCELERATOR.label] = accelerator
+    model.configValues = newConfigValues
+  }
+
+  private suspend fun ensureModelInitializedOnNpu(
+    modelManagerViewModel: ModelManagerViewModel,
+    task: com.google.ai.edge.gallery.data.Task,
+    model: com.google.ai.edge.gallery.data.Model,
+  ) {
+    Log.d(TAG, "Initializing insights model with file ${model.downloadFileName} on ${model.getStringConfigValue(ConfigKeys.ACCELERATOR)}")
+    modelManagerViewModel.initializeModel(context, task, model, force = true)
+    var retries = 75
+    while (model.instance == null && model.initializing && retries > 0) {
+      kotlinx.coroutines.delay(200)
+      retries--
     }
   }
 

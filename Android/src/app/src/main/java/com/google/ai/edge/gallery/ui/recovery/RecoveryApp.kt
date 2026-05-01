@@ -583,7 +583,7 @@ private fun InsightActionCard(
         }
         GemmaInsightStatus.NoModel -> {
           Text(
-            text = "Load `Gemma-4-E2B-it` on the main screen to generate or refresh insights. Saved insights remain visible below.",
+            text = "Load `gemma-4-E2B-it_qualcomm_sm8750.litertlm` through the Gemma 4 model entry on the main screen to generate or refresh insights on NPU. Saved insights remain visible below.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
