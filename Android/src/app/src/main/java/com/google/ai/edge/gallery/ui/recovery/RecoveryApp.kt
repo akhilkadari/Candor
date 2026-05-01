@@ -4,8 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -40,6 +40,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,16 +63,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import com.google.ai.edge.gallery.ui.home.SettingsDialog
 import com.google.ai.edge.gallery.ui.llmchat.LlmChatScreen
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 private enum class RecoveryTab(val label: String, val badge: String) {
   LOG("Log", "L"),
@@ -149,7 +149,10 @@ fun RecoveryApp(
         snackbarHostState = snackbarHostState
       )
       RecoveryTab.INSIGHTS -> RecoveryInsightsScreen(contentPadding = innerPadding)
-      RecoveryTab.HISTORY -> RecoveryHistoryScreen(contentPadding = innerPadding, viewModel = recoveryViewModel)
+      RecoveryTab.HISTORY -> RecoveryHistoryScreen(
+        contentPadding = innerPadding,
+        viewModel = recoveryViewModel
+      )
       RecoveryTab.AI -> {
         if (showAiChat) {
           LlmChatScreen(
@@ -242,7 +245,7 @@ private fun RecoveryLogScreen(
 
   var immediateTriggerNote by rememberSaveable { mutableStateOf("") }
   var selectedTriggerOption by rememberSaveable { mutableStateOf<String?>(null) }
-  
+
   val scope = rememberCoroutineScope()
 
   val triggerOptions = remember {
@@ -295,7 +298,7 @@ private fun RecoveryLogScreen(
           label = "Craving intensity",
           description = "How strong were your urges to use today?",
           value = cravings,
-          valueLabel = cravings.toInt().toString(),
+          valueLabel = if (cravings == 0f) "Not set" else cravings.toInt().toString(),
           lowLabel = "None",
           highLabel = "Strong",
           onValueChange = { cravings = it },
@@ -304,7 +307,7 @@ private fun RecoveryLogScreen(
           label = "Mood",
           description = "Overall, how would you rate your mood today?",
           value = mood,
-          valueLabel = mood.toInt().toString(),
+          valueLabel = if (mood == 0f) "Not set" else mood.toInt().toString(),
           lowLabel = "Low",
           highLabel = "Steady",
           onValueChange = { mood = it },
@@ -313,7 +316,7 @@ private fun RecoveryLogScreen(
           label = "Sleep quality",
           description = "How well did you sleep last night?",
           value = sleepQuality,
-          valueLabel = sleepQuality.toInt().toString(),
+          valueLabel = if (sleepQuality == 0f) "Not set" else sleepQuality.toInt().toString(),
           lowLabel = "Restless",
           highLabel = "Rested",
           onValueChange = { sleepQuality = it },
@@ -322,7 +325,7 @@ private fun RecoveryLogScreen(
           label = "Stress level",
           description = "How stressed did you feel today?",
           value = stress,
-          valueLabel = stress.toInt().toString(),
+          valueLabel = if (stress == 0f) "Not set" else stress.toInt().toString(),
           lowLabel = "Calm",
           highLabel = "Overloaded",
           onValueChange = { stress = it },
@@ -331,7 +334,7 @@ private fun RecoveryLogScreen(
           label = "Social connection",
           description = "How connected to others did you feel today?",
           value = socialConnection,
-          valueLabel = socialConnection.toInt().toString(),
+          valueLabel = if (socialConnection == 0f) "Not set" else socialConnection.toInt().toString(),
           lowLabel = "Cut off",
           highLabel = "Connected",
           onValueChange = { socialConnection = it },
@@ -657,16 +660,16 @@ private fun HistoryCard(entry: com.google.ai.edge.gallery.data.recovery.Entry) {
           }
         }
       }
-      
+
       val headline = when {
         entry.cravingIntensity >= 7 -> "High Cravings"
         entry.stressLevel >= 7 -> "High Stress"
         entry.mood <= 3 -> "Low Mood"
         else -> "Steady Day"
       }
-      
+
       Text(text = headline, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-      
+
       if (entry.note.isNotEmpty()) {
         Text(
           text = entry.note,
