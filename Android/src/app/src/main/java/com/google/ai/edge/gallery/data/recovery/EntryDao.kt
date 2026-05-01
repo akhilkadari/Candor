@@ -47,6 +47,9 @@ interface EntryDao {
     limit: Int = 10,
   ): List<Entry>
 
+  @Query("SELECT * FROM entries WHERE timestamp >= :from ORDER BY timestamp DESC")
+  suspend fun getEntriesSince(from: Long): List<Entry>
+
   @Query("DELETE FROM entries WHERE id = :id")
   suspend fun deleteById(id: Long)
 

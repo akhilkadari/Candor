@@ -40,17 +40,18 @@ class EntryDaoTest {
       id = 1L,
       timestamp = System.currentTimeMillis(),
       mood = 7,
-      sleepHours = 6f,
+      sleepQuality = 6,
       stressLevel = 4,
-      socialScore = 5,
+      socialConnection = 5,
       cravingIntensity = 3,
-      freeText = "Felt okay today",
+      selfEfficacy = 8,
+      note = "Felt okay today",
     )
     entryDao.insert(entry)
     val all = entryDao.getAll()
     assertEquals(1, all.size)
     assertEquals(7, all[0].mood)
-    assertEquals(6f, all[0].sleepHours)
+    assertEquals(6, all[0].sleepQuality)
   }
 
   @Test
@@ -60,11 +61,12 @@ class EntryDaoTest {
         id = i.toLong(),
         timestamp = i.toLong(),
         mood = 5,
-        sleepHours = 7f,
+        sleepQuality = 7,
         stressLevel = 3,
-        socialScore = 5,
+        socialConnection = 5,
         cravingIntensity = 2,
-        freeText = "Entry $i",
+        selfEfficacy = 7,
+        note = "Entry $i",
       ))
     }
     assertEquals(3, entryDao.getLastN(3).size)
@@ -72,10 +74,12 @@ class EntryDaoTest {
 
   @Test
   fun entry_getHighCravingDays_filtersCorrectly() = runBlocking {
-    entryDao.insert(Entry(id = 1L, timestamp = 1L, mood = 5, sleepHours = 4f,
-      stressLevel = 8, socialScore = 2, cravingIntensity = 9, freeText = "Bad day"))
-    entryDao.insert(Entry(id = 2L, timestamp = 2L, mood = 8, sleepHours = 8f,
-      stressLevel = 2, socialScore = 8, cravingIntensity = 2, freeText = "Good day"))
+    entryDao.insert(Entry(id = 1L, timestamp = 1L, mood = 5, sleepQuality = 4,
+      stressLevel = 8, socialConnection = 2, cravingIntensity = 9, selfEfficacy = 3,
+      note = "Bad day"))
+    entryDao.insert(Entry(id = 2L, timestamp = 2L, mood = 8, sleepQuality = 8,
+      stressLevel = 2, socialConnection = 8, cravingIntensity = 2, selfEfficacy = 9,
+      note = "Good day"))
     val results = entryDao.getHighCravingDays(threshold = 7)
     assertEquals(1, results.size)
     assertEquals(9, results[0].cravingIntensity)
@@ -83,12 +87,15 @@ class EntryDaoTest {
 
   @Test
   fun entry_getSimilarDays_excludesSelf_andMatchesCorrectly() = runBlocking {
-    val reference = Entry(id = 10L, timestamp = 10L, mood = 6, sleepHours = 6f,
-      stressLevel = 5, socialScore = 4, cravingIntensity = 5, freeText = "Reference")
-    val similar = Entry(id = 20L, timestamp = 20L, mood = 7, sleepHours = 5f,
-      stressLevel = 4, socialScore = 6, cravingIntensity = 6, freeText = "Similar")
-    val different = Entry(id = 30L, timestamp = 30L, mood = 2, sleepHours = 3f,
-      stressLevel = 10, socialScore = 1, cravingIntensity = 10, freeText = "Different")
+    val reference = Entry(id = 10L, timestamp = 10L, mood = 6, sleepQuality = 6,
+      stressLevel = 5, socialConnection = 4, cravingIntensity = 5, selfEfficacy = 6,
+      note = "Reference")
+    val similar = Entry(id = 20L, timestamp = 20L, mood = 7, sleepQuality = 5,
+      stressLevel = 4, socialConnection = 6, cravingIntensity = 6, selfEfficacy = 7,
+      note = "Similar")
+    val different = Entry(id = 30L, timestamp = 30L, mood = 2, sleepQuality = 3,
+      stressLevel = 10, socialConnection = 1, cravingIntensity = 10, selfEfficacy = 2,
+      note = "Different")
     entryDao.insert(reference)
     entryDao.insert(similar)
     entryDao.insert(different)
@@ -104,10 +111,12 @@ class EntryDaoTest {
 
   @Test
   fun entry_deleteById_removesOnlyTarget() = runBlocking {
-    entryDao.insert(Entry(id = 1L, timestamp = 1L, mood = 5, sleepHours = 6f,
-      stressLevel = 3, socialScore = 4, cravingIntensity = 2, freeText = "Keep"))
-    entryDao.insert(Entry(id = 2L, timestamp = 2L, mood = 6, sleepHours = 7f,
-      stressLevel = 4, socialScore = 5, cravingIntensity = 3, freeText = "Delete"))
+    entryDao.insert(Entry(id = 1L, timestamp = 1L, mood = 5, sleepQuality = 6,
+      stressLevel = 3, socialConnection = 4, cravingIntensity = 2, selfEfficacy = 8,
+      note = "Keep"))
+    entryDao.insert(Entry(id = 2L, timestamp = 2L, mood = 6, sleepQuality = 7,
+      stressLevel = 4, socialConnection = 5, cravingIntensity = 3, selfEfficacy = 7,
+      note = "Delete"))
     entryDao.deleteById(2L)
     val all = entryDao.getAll()
     assertEquals(1, all.size)
@@ -116,10 +125,12 @@ class EntryDaoTest {
 
   @Test
   fun entry_deleteAll_clearsTable() = runBlocking {
-    entryDao.insert(Entry(id = 1L, timestamp = 1L, mood = 5, sleepHours = 6f,
-      stressLevel = 3, socialScore = 4, cravingIntensity = 2, freeText = "A"))
-    entryDao.insert(Entry(id = 2L, timestamp = 2L, mood = 6, sleepHours = 7f,
-      stressLevel = 4, socialScore = 5, cravingIntensity = 3, freeText = "B"))
+    entryDao.insert(Entry(id = 1L, timestamp = 1L, mood = 5, sleepQuality = 6,
+      stressLevel = 3, socialConnection = 4, cravingIntensity = 2, selfEfficacy = 8,
+      note = "A"))
+    entryDao.insert(Entry(id = 2L, timestamp = 2L, mood = 6, sleepQuality = 7,
+      stressLevel = 4, socialConnection = 5, cravingIntensity = 3, selfEfficacy = 7,
+      note = "B"))
     entryDao.deleteAll()
     assertTrue(entryDao.getAll().isEmpty())
   }
