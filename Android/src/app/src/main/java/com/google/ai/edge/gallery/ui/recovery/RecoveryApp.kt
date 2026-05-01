@@ -25,7 +25,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -35,6 +37,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -214,28 +217,30 @@ private fun AiLauncherScreen(
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun RecoveryLogScreen(contentPadding: PaddingValues) {
-  var mood by rememberSaveable { mutableFloatStateOf(4f) }
-  var stress by rememberSaveable { mutableFloatStateOf(6f) }
-  var cravings by rememberSaveable { mutableFloatStateOf(5f) }
-  var sleepQuality by rememberSaveable { mutableFloatStateOf(4f) }
-  var isolation by rememberSaveable { mutableFloatStateOf(7f) }
-  var routineStability by rememberSaveable { mutableFloatStateOf(3f) }
+  var cravings by rememberSaveable { mutableFloatStateOf(1f) }
+  var mood by rememberSaveable { mutableFloatStateOf(5f) }
+  var sleepQuality by rememberSaveable { mutableFloatStateOf(5f) }
+  var stress by rememberSaveable { mutableFloatStateOf(1f) }
+  var socialConnection by rememberSaveable { mutableFloatStateOf(5f) }
+  var selfEfficacy by rememberSaveable { mutableFloatStateOf(5f) }
   var note by rememberSaveable { mutableStateOf("") }
 
-  val triggerTags =
-    remember {
-      listOf(
-        "Poor sleep",
-        "Conflict",
-        "Work stress",
-        "Isolation",
-        "Skipped meeting",
-        "Cravings spike",
-        "Boredom",
-        "Unstructured evening",
-      )
-    }
-  val selectedTags = rememberSaveable { mutableStateOf(setOf("Poor sleep", "Work stress")) }
+  var showImmediateTrigger by rememberSaveable { mutableStateOf(false) }
+  var immediateTriggerNote by rememberSaveable { mutableStateOf("") }
+  var selectedTriggerOption by rememberSaveable { mutableStateOf<String?>(null) }
+
+  val triggerOptions = remember {
+    listOf(
+      "Interpersonal Conflict",
+      "Social Pressure to Use",
+      "Exposure to Substance Cues (places/people)",
+      "Financial Stress",
+      "Work Stress",
+      "Physical Pain",
+      "Positive Event/Celebration",
+      "Other"
+    )
+  }
 
   LazyColumn(
     modifier =
@@ -268,9 +273,19 @@ private fun RecoveryLogScreen(contentPadding: PaddingValues) {
     }
 
     item {
-      SectionCard(title = "Core Triggers", subtitle = "Use the sliders to log intensity today.") {
+      SectionCard(title = "How are you feeling today?", subtitle = "Use the sliders to log intensity today.") {
+        TriggerSlider(
+          label = "Craving intensity",
+          description = "How strong were your urges to use today?",
+          value = cravings,
+          valueLabel = cravings.toInt().toString(),
+          lowLabel = "None",
+          highLabel = "Strong",
+          onValueChange = { cravings = it },
+        )
         TriggerSlider(
           label = "Mood",
+          description = "Overall, how would you rate your mood today?",
           value = mood,
           valueLabel = mood.toInt().toString(),
           lowLabel = "Low",
@@ -278,23 +293,8 @@ private fun RecoveryLogScreen(contentPadding: PaddingValues) {
           onValueChange = { mood = it },
         )
         TriggerSlider(
-          label = "Stress",
-          value = stress,
-          valueLabel = stress.toInt().toString(),
-          lowLabel = "Calm",
-          highLabel = "Overloaded",
-          onValueChange = { stress = it },
-        )
-        TriggerSlider(
-          label = "Cravings",
-          value = cravings,
-          valueLabel = cravings.toInt().toString(),
-          lowLabel = "Quiet",
-          highLabel = "Loud",
-          onValueChange = { cravings = it },
-        )
-        TriggerSlider(
-          label = "Sleep Quality",
+          label = "Sleep quality",
+          description = "How well did you sleep last night?",
           value = sleepQuality,
           valueLabel = sleepQuality.toInt().toString(),
           lowLabel = "Restless",
@@ -302,43 +302,121 @@ private fun RecoveryLogScreen(contentPadding: PaddingValues) {
           onValueChange = { sleepQuality = it },
         )
         TriggerSlider(
-          label = "Isolation",
-          value = isolation,
-          valueLabel = isolation.toInt().toString(),
-          lowLabel = "Connected",
-          highLabel = "Cut off",
-          onValueChange = { isolation = it },
+          label = "Stress level",
+          description = "How stressed did you feel today?",
+          value = stress,
+          valueLabel = stress.toInt().toString(),
+          lowLabel = "Calm",
+          highLabel = "Overloaded",
+          onValueChange = { stress = it },
         )
         TriggerSlider(
-          label = "Routine Stability",
-          value = routineStability,
-          valueLabel = routineStability.toInt().toString(),
-          lowLabel = "Scattered",
+          label = "Social connection",
+          description = "How connected to others did you feel today?",
+          value = socialConnection,
+          valueLabel = socialConnection.toInt().toString(),
+          lowLabel = "Cut off",
+          highLabel = "Connected",
+          onValueChange = { socialConnection = it },
+        )
+        TriggerSlider(
+          label = "Self-efficacy",
+          description = "How confident are you in staying sober tomorrow?",
+          value = selfEfficacy,
+          valueLabel = selfEfficacy.toInt().toString(),
+          lowLabel = "Unsure",
           highLabel = "Grounded",
-          onValueChange = { routineStability = it },
+          onValueChange = { selfEfficacy = it },
         )
       }
     }
 
     item {
-      SectionCard(
-        title = "Known Triggers Today",
-        subtitle = "These are temporary UI selections until the database model is connected.",
-      ) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          triggerTags.forEach { tag ->
-            val selected = tag in selectedTags.value
-            AssistChip(
-              onClick = {
-                selectedTags.value =
-                  if (selected) {
-                    selectedTags.value - tag
-                  } else {
-                    selectedTags.value + tag
-                  }
-              },
-              label = { Text(tag) },
-            )
+      Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Button(
+          onClick = {
+            showImmediateTrigger = !showImmediateTrigger
+            if (!showImmediateTrigger) {
+              selectedTriggerOption = null
+              immediateTriggerNote = ""
+            }
+          },
+          modifier = Modifier.fillMaxWidth(),
+          shape = RoundedCornerShape(16.dp),
+        ) {
+          Text("LOG TRIGGER", fontWeight = FontWeight.Bold)
+        }
+
+        if (showImmediateTrigger) {
+          Card(
+            shape = RoundedCornerShape(20.dp),
+            colors =
+              CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+          ) {
+            Column(
+              modifier = Modifier.padding(16.dp),
+              verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+              Text(
+                "Log Trigger",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+              )
+
+              FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                triggerOptions.forEach { option ->
+                  val selected = selectedTriggerOption == option
+                  AssistChip(
+                    onClick = { selectedTriggerOption = option },
+                    label = { Text(option) },
+                    colors = if (selected) {
+                      AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        labelColor = MaterialTheme.colorScheme.onPrimary
+                      )
+                    } else {
+                      AssistChipDefaults.assistChipColors()
+                    }
+                  )
+                }
+              }
+
+              if (selectedTriggerOption == "Other") {
+                OutlinedTextField(
+                  value = immediateTriggerNote,
+                  onValueChange = { immediateTriggerNote = it },
+                  modifier = Modifier.fillMaxWidth(),
+                  placeholder = { Text("What's happening right now?") },
+                  colors =
+                    OutlinedTextFieldDefaults.colors(
+                      focusedContainerColor = MaterialTheme.colorScheme.surface,
+                      unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                )
+              }
+
+              Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = {
+                  showImmediateTrigger = false
+                  selectedTriggerOption = null
+                  immediateTriggerNote = ""
+                }) { Text("Cancel") }
+                Button(
+                  onClick = {
+                    showImmediateTrigger = false
+                    selectedTriggerOption = null
+                    immediateTriggerNote = ""
+                  },
+                  enabled = selectedTriggerOption != null
+                ) {
+                  Text("Save Trigger")
+                }
+              }
+            }
           }
         }
       }
@@ -629,6 +707,7 @@ private fun SectionCard(
 @Composable
 private fun TriggerSlider(
   label: String,
+  description: String,
   value: Float,
   valueLabel: String,
   lowLabel: String,
@@ -641,11 +720,19 @@ private fun TriggerSlider(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      Text(text = label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+      Column(modifier = Modifier.weight(1f)) {
+        Text(text = label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+          text = description,
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+      }
       Text(
         text = valueLabel,
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 8.dp)
       )
     }
     Slider(value = value, onValueChange = onValueChange, valueRange = 0f..10f, steps = 9)
