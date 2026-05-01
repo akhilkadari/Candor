@@ -1,82 +1,36 @@
-# Implementing Your Custom Logic
-To build specialized agents that go beyond our provided demos, you can fine-tune your own version of the model and customize the app with your functions to call.
+# Function Calling Guide
 
-## Clone the Repository
-```shell
-git clone git@github.com:google-ai-edge/gallery.git
-```
+Candor is built on top of Google AI Edge Gallery, which includes broader agent and function-calling surfaces. Function calling is not the primary user-facing feature of the current Candor hackathon experience, but this repository still contains inherited infrastructure related to tool-driven model tasks.
 
-This will create a local copy of the repository.
+## Why This File Exists
 
-## Define Your Action Type 
+Candor narrowed the product scope to the recovery workflow:
 
-In [Actions.kt](Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/mobileactions/Actions.kt), add a new entry to the `ActionType` enum and create a class that extends `Action` to define your specific function name, icon, and parameters.
+- daily check-ins
+- local persistence
+- on-device insights
+- history and edit flow
 
-```kotlin
-enum class ActionType {
-  // ... existing types
-  ACTION_NEW_CUSTOM_FUNCTION,
-}
+That means function calling is currently a secondary implementation concern rather than a headline feature.
 
-class NewCustomAction(val param: String) : Action(
-  type = ActionType.ACTION_NEW_CUSTOM_FUNCTION,
-  icon = Icons.Outlined.Favorite, // Choose an appropriate icon
-  functionCallDetails = FunctionCallDetails(
-    functionName = "newCustomFunction",
-    parameters = listOf(Pair("param", param))
-  )
-)
-```
+## Current Practical Status
 
-## Add Your Tool Definition
+- The recovery experience does not depend on custom function-calling flows.
+- The insight pipeline is prompt-driven and model-specific.
+- Some AI Edge Gallery task infrastructure remains in the repository because Candor was adapted from that codebase rather than rebuilt from scratch.
 
-In [MobileActionsTools.kt](Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/mobileactions/MobileActionsTools.kt), create a new function annotated with `@Tool` and `@ToolParam`. This function should call the `onFunctionCalled` callback to pass the specific action to your app logic.
+## If You Need To Explore It
 
-```kotlin
-class MobileActionsTools(val onFunctionCalled: (Action) -> Unit): Toolset {
-  // ... existing tools
+Start with:
 
-  /** Description for the model. */
-  @Tool(description = "Description of what this function does")
-  fun newCustomFunction(
-    @ToolParam(description = "Description of the parameter") param: String
-  ): Map<String, String> {
-    onFunctionCalled(NewCustomAction(param = param))
-    return mapOf("result" to "success")
-  }
-}
-```
+- `Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/`
+- `Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/llmchat/`
+- `Android/src/app/src/main/java/com/google/ai/edge/gallery/data/Tasks.kt`
 
-## Implement Your Action Logic 
+## Guidance
 
-Update the `performAction` method in [MobileActionsViewModel.kt](Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/mobileactions/MobileActionsViewModel.kt) to handle your new action type. This is where you implement the actual Android logic, such as using the `CameraManager` or starting a new `Intent`.
+If the goal is to understand the submitted Candor product, focus first on the recovery flow and insight pipeline documented in:
 
-```kotlin
-fun performAction(action: Action, context: Context): String {
-  return when (action) {
-    // ... existing actions
-    is NewCustomAction -> handleNewCustomAction(context, action.param)
-    else -> ""
-  }
-}
-
-private fun handleNewCustomAction(context: Context, param: String): String {
-  // Implement your Android logic here (e.g., Toast, Intent, etc.)
-  return ""
-}
-```
-
-## Update the System Prompt (Optional) 
-
-If your function requires specific context like the current time or device state, update the `getSystemPrompt()` function in [MobileActionsTask.kt](Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/mobileactions/MobileActionsTask.kt) to ensure the model has the information it needs.
-
-## Build and Install 
-
-Navigate to the `Android/src/` directory in your terminal and use the Gradle wrapper to build the debug version of the app and install it directly onto your connected device:
-
-```shell
-cd gallery/Android/src/
-./gradlew installDebug
-```
-
-Gradle will take care of downloading dependencies, compiling the code, and deploying the APK. Once finished, you should see "Edge Gallery" appearing in your app drawer!
+- [README.md](README.md)
+- [DEVELOPMENT.md](DEVELOPMENT.md)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)

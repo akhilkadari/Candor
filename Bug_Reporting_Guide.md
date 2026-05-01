@@ -1,78 +1,62 @@
-# **The Complete Guide to Capturing AI Edge Gallery Bug Reports for ANDROID devices**
+# Bug Reporting Guide
 
-Thank you for helping us improve the AI Edge Gallery app\! To find and fix bugs effectively, our engineers need detailed diagnostic information from your device. A **Full Bug Report** is the best way to provide this.
+This guide explains how to capture a useful Android bug report for Candor.
 
-Please note that this guide is specifically for capturing bug reports on **Android devices**.
+The most helpful report includes:
 
-This guide covers the simple on-device method for all users and the more advanced `adb` method for developers.
+- what you were doing
+- what you expected
+- what happened instead
+- device model
+- Android version
+- whether a model was loaded
+- a full Android bug report if the issue is difficult to reproduce
 
-### **Part 1: The Recommended Method (On Your Device)**
+## Recommended Method: Android Full Bug Report
 
-This is the fastest and easiest way to generate a complete bug report.
+### 1. Enable Developer Options
 
-#### **1\. Enable Developer Options**
+1. Open `Settings`.
+2. Go to `About phone`.
+3. Tap `Build number` 7 times.
 
-First, you need to enable the hidden "Developer options" menu on your phone.
+### 2. Capture The Report
 
-* Open your phone's **Settings** app.  
-* Scroll down and tap **"About phone"**.  
-* Find the **"Build number"** and tap on it **7 times** in a row. You will see a "You are now a developer\!" message.
+1. Reproduce the issue.
+2. Open `Settings > Developer options`.
+3. Tap `Take bug report`.
+4. Choose `Full report`.
 
-#### **2\. Capture the Bug Report**
+### 3. Share The Output
 
-It's best to capture the report **immediately after** you've experienced the bug.
+When Android finishes collecting diagnostics, it creates a `.zip` file. Attach it to the issue or upload it and share the link.
 
-* Go back to the main **Settings** page and find the new **"Developer options"** menu (it may be under "System").  
-* Inside Developer options, tap **"Take bug report"**.  
-* Select the **"Full report"** option and tap **"Report"**. This provides the most detailed information and is strongly preferred.
+## Useful Context To Include
 
-#### **3\. Wait and Share**
+- Was the issue in `Log`, `Insights`, or `History`?
+- Had you already downloaded `Gemma-4-E2B-it`?
+- How many entries existed when the issue occurred?
+- Did the problem happen during model initialization, generation, save, or edit?
 
-* Your phone will take a moment to collect all the data. When it's ready, a notification will appear saying **"Bug report captured"**.  
-* Tap this notification.  
-* The Android share menu will open. You can now share the `.zip` file with us. The easiest way is to **save it to your Google Drive** and share the link, or attach it directly to the GitHub issue.
+## ADB Method
 
-### **Part 2: For Developers & Advanced Users (Using ADB)**
+For developers:
 
-This section is for users comfortable with the Android Debug Bridge (`adb`) command-line tool.
-
-#### **Capture a Bug Report Directly**
-
-If you have a device connected to your computer with USB debugging enabled, you can use the following commands.
-
-* **For a single connected device:**
-
-```shell
-# This saves the report to the specified path on your computer.
-adb bugreport C:\Reports\MyBugReports
+```sh
+adb bugreport ./candor-bugreport
 ```
 
-* **For multiple connected devices:**
+If multiple devices are connected:
 
-```shell
-# First, list devices to get the serial number.
+```sh
 adb devices
-
-# Then, use the serial number to target the correct device.
-adb -s <your_device_serial_number> bugreport
+adb -s <device_serial> bugreport
 ```
 
-#### **Access Older Bug Reports from Your Device**
+## When Reporting Insight Issues
 
-Android automatically saves recent bug reports on the device.
+Insight bugs are easier to debug if you also include:
 
-1. **List Saved Reports:**
-
-```shell
-adb shell ls /bugreports/
-```
-
-2. **Pull a Specific Report:**
-
-```shell
-adb pull /bugreports/<bug_report_filename.zip>
-```
-
-#### **Understanding the Bug Report File**
-
-Your bug report is a `.zip` file. Inside, the most important file is **`bugreport-[...].txt`**. This text file contains the full system log (logcat), error logs (`dumpstate`), and detailed diagnostic output for all system services (`dumpsys`), giving engineers a complete picture of the device's state at the time of the bug.
+- whether the model was running on NPU, GPU, or CPU
+- whether the app said `No model`, `Not enough data`, `Loading`, or `Error`
+- whether the issue affected generation or previously saved snapshots
