@@ -1,113 +1,145 @@
-# Candor
+# Candor 🧠📱
 
-Candor is a privacy-first Android recovery companion built for on-device reflection, pattern tracking, and insight generation. Users log a daily check-in, review their recent history, and generate AI-assisted observations from their own data without sending their journal history to a remote inference service.
+Candor is a **privacy-first Android recovery companion** built for on-device reflection, pattern tracking, and insight generation. Users log a daily check-in, review their recent history, and generate AI-assisted observations — all without sending their data to the cloud.
 
-This project is based on Google AI Edge Gallery and has been narrowed into a focused recovery experience for hackathon submission. The current product centers on one workflow: log your day, detect patterns, and surface useful signals entirely on device once the model is installed.
+This project is based on Google AI Edge Gallery and has been refined into a focused recovery experience for a hackathon setting. The core idea is simple:
 
-## What Candor Does
+> Log your day → detect patterns → surface insights — all on-device.
 
-- Guides the user through a daily recovery check-in with progressive disclosure.
-- Tracks five core recovery ratings: craving intensity, mood, stress level, social connection, and self-efficacy.
-- Supports trigger tagging alongside structured daily ratings.
-- Captures freeform reflection alongside structured inputs.
-- Persists daily entries locally on device.
-- Generates rule-based signals such as streaks, consistency summaries, and early warning indicators.
-- Generates AI insights from recent entries using an on-device Gemma 4 E2B model.
-- Lets users review history and edit previous entries from the history flow.
+---
 
-## Why It Matters
+## ✨ What Candor Does
 
-Recovery tools often force a tradeoff between usefulness and privacy. Candor is designed to avoid that tradeoff:
+- Guides users through a **daily recovery check-in** with progressive disclosure.
+- Tracks five core signals:
+  - Craving intensity  
+  - Mood  
+  - Stress level  
+  - Social connection  
+  - Self-efficacy  
+- Supports **trigger tagging** alongside structured inputs.
+- Captures **freeform reflection** for added context.
+- Stores all entries **locally on device** 🔒
+- Generates:
+  - Streaks and consistency summaries  
+  - Early warning signals  
+  - AI-powered insights using an on-device Gemma model  
+- Allows users to **review and edit past entries**
 
-- Personal check-in data stays on device.
-- Insight generation runs locally after the model has been downloaded.
-- Users get pattern detection without needing to trust a cloud analysis pipeline.
+---
 
-The only network-dependent part of the core experience is initial model authentication and download through Hugging Face and the model management flow inherited from AI Edge Gallery.
+## 🔐 Why It Matters
 
-## Product Walkthrough
+Most recovery tools force a tradeoff between **privacy and usefulness**. Candor is designed to eliminate that:
+
+- All personal data stays **on-device**
+- AI insights are generated **locally**
+- No need to trust a cloud-based pipeline with sensitive information
+
+The only network dependency is during **initial model download** via Hugging Face.
+
+---
+
+## 📲 Product Walkthrough
 
 ### 1. Log
 
-The Log tab is the main daily entry point.
+The **Log tab** is the primary entry point.
 
-- Starts with a single `Log Your Day` CTA instead of dumping the full form immediately.
-- Reveals each question progressively as the user moves through the check-in.
-- Uses semantic sliders for the core metrics.
-- Supports trigger tagging using a recovery-oriented taxonomy.
-- Saves one entry per day and updates existing entries for the same date.
+- Starts with a simple **“Log Your Day”** CTA  
+- Reveals questions progressively (low friction)  
+- Uses intuitive sliders for core metrics  
+- Supports structured trigger tagging  
+- Saves one entry per day (updates if re-logged)
+
+---
 
 ### 2. Insights
 
-The Insights tab combines deterministic analysis with LLM reasoning.
+The **Insights tab** combines rule-based logic with LLM reasoning.
 
-- Requires at least 5 check-ins before Gemma insights are available.
-- Builds a prompt from up to the 30 most recent entries.
-- Attempts the preferred accelerator order during model initialization:
-  `NPU/TPU -> GPU -> CPU`
-- Stores generated insight snapshots locally so prior results remain visible.
+- Requires **≥ 5 check-ins** before AI insights activate  
+- Builds prompts from up to **30 recent entries**  
+- Uses hardware acceleration in this order:  
+  `NPU/TPU → GPU → CPU ⚡`  
+- Stores generated insights locally for persistence  
 
-Candor currently prefers:
+**Model Used:**
+- `Gemma-4-E2B-it`
+- `gemma-4-E2B-it_qualcomm_sm8750.litertlm`
 
-- Model name: `Gemma-4-E2B-it`
-- File: `gemma-4-E2B-it_qualcomm_sm8750.litertlm`
+---
 
 ### 3. History
 
-The History flow lets the user inspect prior entries and return an entry to the Log screen for editing. Candor also computes streak and consistency information from the saved timeline.
+The **History tab** lets users:
 
-## Technical Highlights
+- Scroll through past entries  
+- Edit previous days  
+- View streaks and consistency trends 📊  
 
-- Android app written in Kotlin with Jetpack Compose.
-- Hilt-based dependency injection.
-- Proto DataStore for check-in persistence.
-- Room for stored insight snapshots and recovery-related data access.
-- LiteRT / Google AI Edge runtime for on-device LLM execution.
-- Gemma 4 E2B used as the primary analysis model for the recovery insight workflow.
+---
 
-## Architecture At A Glance
+## ⚙️ Technical Highlights
 
-The current app is structured around a focused recovery flow:
+- Kotlin + Jetpack Compose Android app  
+- Hilt for dependency injection  
+- Proto DataStore for check-in persistence  
+- Room database for insight storage  
+- LiteRT / Google AI Edge runtime for on-device inference  
+- Gemma 4 E2B for local reasoning  
 
-- `RecoveryApp.kt`
-  Primary three-tab experience: Log, Insights, History.
-- `RecoveryViewModel.kt`
-  Owns check-in form state, saving, editing, and mock data seeding.
-- `InsightsViewModel.kt`
-  Loads saved snapshots, checks model availability, initializes Gemma, builds prompts, and saves generated insight results.
-- `InsightsEngine.kt`
-  Pure Kotlin analysis helpers for consistency and early-signal detection.
-- `CheckInRepository.kt`
-  Local repository over `checkins.pb` Proto DataStore.
-- `RecoveryDatabase.kt` and `InsightRepository.kt`
-  Local Room storage for serialized insight snapshots.
+---
 
-For a fuller breakdown, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## 🏗️ Architecture At A Glance
 
-## Repository Guide
+Candor is structured around a focused recovery flow:
 
-- [DEVELOPMENT.md](DEVELOPMENT.md)
-  Local setup, build steps, model setup, and common pitfalls.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-  App layers, data flow, and the recovery-specific implementation.
-- [docs/IMPLEMENTATION_HISTORY.md](docs/IMPLEMENTATION_HISTORY.md)
-  The major implementation phases, derived from commit history.
-- [Android/README.md](Android/README.md)
-  Android module-focused orientation.
-- [Bug_Reporting_Guide.md](Bug_Reporting_Guide.md)
-  How to capture actionable Android bug reports.
-- [Function_Calling_Guide.md](Function_Calling_Guide.md)
-  Notes on the inherited function-calling surface from AI Edge Gallery.
+- `RecoveryApp.kt`  
+  → Main 3-tab experience (Log, Insights, History)
 
-## Quick Start
+- `RecoveryViewModel.kt`  
+  → Manages check-in state and saving logic
+
+- `InsightsViewModel.kt`  
+  → Handles model loading, prompt building, and insight generation
+
+- `InsightsEngine.kt`  
+  → Rule-based pattern detection
+
+- `CheckInRepository.kt`  
+  → Local check-in storage via Proto DataStore
+
+- `RecoveryDatabase.kt` + `InsightRepository.kt`  
+  → Room storage for generated insights
+
+For more detail, see:  
+👉 `docs/ARCHITECTURE.md`
+
+---
+
+## 📁 Repository Guide
+
+- `DEVELOPMENT.md` → Setup + build instructions  
+- `docs/ARCHITECTURE.md` → System design + data flow  
+- `docs/IMPLEMENTATION_HISTORY.md` → Development evolution  
+- `Android/README.md` → Android-specific notes  
+- `Bug_Reporting_Guide.md` → Debugging guidance  
+- `Function_Calling_Guide.md` → AI Edge Gallery notes  
+
+---
+
+## 🚀 Quick Start
 
 ### Requirements
 
-- macOS or Linux development environment
-- Android Studio
-- Android SDK for API 35
-- An Android 12+ device or emulator
-- A Hugging Face OAuth app for model download
+- macOS or Linux  
+- Android Studio  
+- Android SDK (API 35)  
+- Android 12+ device or emulator  
+- Hugging Face OAuth app  
+
+---
 
 ### Clone
 
