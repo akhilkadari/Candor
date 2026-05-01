@@ -64,8 +64,6 @@ Output only valid JSON. No disclaimers, no advice, no markdown fences, no text o
     val fields = listOf(
       Field("Your craving intensity", { it.cravingIntensity }, true),
       Field("Stress", { it.stressLevel }, true),
-      Field("Sleep quality", { it.sleepQuality }, false),
-      Field("Sleep duration", { it.sleepHours }, false, threshold = 1.0f),
       Field("Mood", { it.mood }, false),
       Field("Social connection", { it.socialConnection }, false),
       Field("Self-efficacy", { it.selfEfficacy }, false),
@@ -90,7 +88,7 @@ Output only valid JSON. No disclaimers, no advice, no markdown fences, no text o
       return ConsistencyInsight(0, 7, 0, "Start logging to track your consistency.")
     }
 
-    val dates = entries.map { LocalDate.parse(it.date) }.toSortedSet(reverseOrder())
+    val dates = entries.map { try { LocalDate.parse(it.date) } catch(e: Exception) { LocalDate.now() } }.toSortedSet(reverseOrder())
     val today = LocalDate.now()
 
     var streak = 0
@@ -107,7 +105,7 @@ Output only valid JSON. No disclaimers, no advice, no markdown fences, no text o
     val message = when {
       streak >= 7 -> "$streak-day streak — keep it going."
       streak >= 3 -> "$streak-day streak. You're building momentum."
-      streak == 1 -> "You've checked in ${entries.size} of 7 days this week. Come back tomorrow."
+      streak >= 1 -> "You've checked in ${entries.size} of 7 days this week. Come back tomorrow."
       else -> "You've checked in $daysLoggedThisWeek of 7 days this week."
     }
 
@@ -116,17 +114,16 @@ Output only valid JSON. No disclaimers, no advice, no markdown fences, no text o
 
   fun buildInsightPrompt(entries: List<CheckInEntry>): String {
     val recent = entries.sortedByDescending { it.date }.take(30)
-    val header = "DATE|CRAV|MOOD|SLP_Q|SLP_H|STRESS|SOCIAL|EFFICACY|TRIGGERS|HARDEST|HELPED"
+    val header = "DATE|CRAV|MOOD|STRESS|SOCIAL|EFFICACY|TRIGGERS|REFLECTION"
     val rows = recent.joinToString("\n") { e ->
-      "${e.date}|${e.cravingIntensity}|${e.mood}|${e.sleepQuality}|${e.sleepHours}|" +
+      "${e.date}|${e.cravingIntensity}|${e.mood}|" +
         "${e.stressLevel}|${e.socialConnection}|${e.selfEfficacy}|" +
-        "${e.triggersList.joinToString(",")}|${e.hardestToday}|${e.helpedToday}"
+        "${e.triggersList.joinToString(",")}|${e.reflection}"
     }
     return """
 Field guide: craving_intensity (1-10, higher=worse), mood (1-10, higher=better),
-sleep_quality (1-10, higher=better), sleep_hours (decimal), stress_level (1-10, higher=worse),
-social_connection (1-10, higher=better), self_efficacy (1-10, higher=better),
-triggers (comma-separated keys), hardest_today (text), helped_today (text).
+stress_level (1-10, higher=worse), social_connection (1-10, higher=better),
+self_efficacy (1-10, higher=better), triggers (comma-separated keys), reflection (text).
 
 Entries (newest first):
 $header

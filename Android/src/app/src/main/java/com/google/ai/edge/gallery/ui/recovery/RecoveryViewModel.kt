@@ -17,17 +17,14 @@ import kotlinx.coroutines.launch
 enum class SaveStatus { IDLE, SAVING, SAVED, ERROR }
 
 data class LogUiState(
+  val date: String = "", // empty means today's new entry
   val cravingIntensity: Int = 5,
   val mood: Int = 5,
-  val sleepQuality: Int = 5,
   val stressLevel: Int = 5,
   val socialConnection: Int = 5,
   val selfEfficacy: Int = 5,
-  val sleepHours: String = "",
-  val sleepHoursError: String? = null,
   val selectedTriggers: Set<String> = emptySet(),
-  val hardestToday: String = "",
-  val helpedToday: String = "",
+  val reflection: String = "",
   val saveStatus: SaveStatus = SaveStatus.IDLE,
 )
 
@@ -44,6 +41,7 @@ class RecoveryViewModel @Inject constructor(
 
   init {
     refreshHistory()
+    checkTodayEntry()
   }
 
   fun refreshHistory() {
@@ -52,24 +50,44 @@ class RecoveryViewModel @Inject constructor(
     }
   }
 
+  private fun checkTodayEntry() {
+    viewModelScope.launch {
+      val today = LocalDate.now().toString()
+      val entries = checkInRepository.getAllEntries()
+      val todayEntry = entries.find { it.date == today }
+      if (todayEntry != null) {
+        populateForm(todayEntry)
+      }
+    }
+  }
+
+  fun populateForm(entry: CheckInEntry) {
+    _logUiState.update {
+      it.copy(
+        date = entry.date,
+        cravingIntensity = entry.cravingIntensity,
+        mood = entry.mood,
+        stressLevel = entry.stressLevel,
+        socialConnection = entry.socialConnection,
+        selfEfficacy = entry.selfEfficacy,
+        selectedTriggers = entry.triggersList.toSet(),
+        reflection = entry.reflection,
+        saveStatus = SaveStatus.IDLE
+      )
+    }
+  }
+
+  fun resetForm() {
+    _logUiState.value = LogUiState()
+    checkTodayEntry() // restore today if it exists
+  }
+
   fun updateCravingIntensity(v: Int) = _logUiState.update { it.copy(cravingIntensity = v) }
   fun updateMood(v: Int) = _logUiState.update { it.copy(mood = v) }
-  fun updateSleepQuality(v: Int) = _logUiState.update { it.copy(sleepQuality = v) }
   fun updateStressLevel(v: Int) = _logUiState.update { it.copy(stressLevel = v) }
   fun updateSocialConnection(v: Int) = _logUiState.update { it.copy(socialConnection = v) }
   fun updateSelfEfficacy(v: Int) = _logUiState.update { it.copy(selfEfficacy = v) }
-  fun updateHardestToday(v: String) = _logUiState.update { it.copy(hardestToday = v) }
-  fun updateHelpedToday(v: String) = _logUiState.update { it.copy(helpedToday = v) }
-
-  fun updateSleepHours(v: String) {
-    val error = when {
-      v.isEmpty() -> null
-      v.toFloatOrNull() == null -> "Enter a valid number"
-      v.toFloat() !in 0f..24f -> "Must be between 0 and 24"
-      else -> null
-    }
-    _logUiState.update { it.copy(sleepHours = v, sleepHoursError = error) }
-  }
+  fun updateReflection(v: String) = _logUiState.update { it.copy(reflection = v) }
 
   fun toggleTrigger(key: String) {
     _logUiState.update { state ->
@@ -80,24 +98,21 @@ class RecoveryViewModel @Inject constructor(
   }
 
   fun saveEntry() {
-    val state = _logUiState.value
-    if (state.sleepHoursError != null) return
-
     _logUiState.update { it.copy(saveStatus = SaveStatus.SAVING) }
 
     viewModelScope.launch {
+      val state = _logUiState.value
+      val entryDate = if (state.date.isEmpty()) LocalDate.now().toString() else state.date
+      
       val entry = CheckInEntry.newBuilder()
-        .setDate(LocalDate.now().toString())
+        .setDate(entryDate)
         .setCravingIntensity(state.cravingIntensity)
         .setMood(state.mood)
-        .setSleepQuality(state.sleepQuality)
         .setStressLevel(state.stressLevel)
         .setSocialConnection(state.socialConnection)
         .setSelfEfficacy(state.selfEfficacy)
-        .setSleepHours(state.sleepHours.toFloatOrNull() ?: 0f)
         .addAllTriggers(state.selectedTriggers)
-        .setHardestToday(state.hardestToday)
-        .setHelpedToday(state.helpedToday)
+        .setReflection(state.reflection)
         .setTimestampMs(System.currentTimeMillis())
         .build()
 
@@ -105,12 +120,44 @@ class RecoveryViewModel @Inject constructor(
       _logUiState.update { it.copy(saveStatus = SaveStatus.SAVED) }
       refreshHistory()
 
-      delay(2000)
-      _logUiState.update {
-        LogUiState(saveStatus = SaveStatus.IDLE)
-      }
+      delay(1500)
+      _logUiState.update { it.copy(saveStatus = SaveStatus.IDLE) }
     }
   }
 
   fun getEntryCount(): Int = checkInRepository.getEntryCount()
+
+  fun seedMockData() {
+    viewModelScope.launch {
+      val now = LocalDate.now()
+      for (i in 1..21) {
+        val date = now.minusDays(i.toLong()).toString()
+        // Create some patterns: Every 4th day is high stress/craving, social days are better.
+        val isStressful = i % 4 == 0
+        val isSocial = i % 3 == 0
+        
+        val entry = CheckInEntry.newBuilder()
+          .setDate(date)
+          .setCravingIntensity(if (isStressful) 8 else 2)
+          .setMood(if (isStressful) 3 else 7)
+          .setStressLevel(if (isStressful) 9 else 3)
+          .setSocialConnection(if (isSocial) 8 else 3)
+          .setSelfEfficacy(if (isStressful) 4 else 9)
+          .addAllTriggers(
+            if (isStressful) listOf(TriggerKeys.WORK_STRESS, TriggerKeys.FINANCIAL_STRESS)
+            else if (isSocial) listOf(TriggerKeys.POSITIVE_CELEBRATION)
+            else listOf(TriggerKeys.NONE)
+          )
+          .setReflection(
+            if (isStressful) "Work was overwhelming today and I'm worried about bills. Felt a lot of pressure to use."
+            else if (isSocial) "Spent time with family and felt really supported. Mood is stable."
+            else "A quiet, routine day. No major issues."
+          )
+          .setTimestampMs(System.currentTimeMillis() - (i * 86400000L))
+          .build()
+        checkInRepository.addOrReplaceEntry(entry)
+      }
+      refreshHistory()
+    }
+  }
 }

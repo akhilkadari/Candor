@@ -1,6 +1,5 @@
 package com.google.ai.edge.gallery.ui.recovery
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,9 +20,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -31,15 +29,13 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
@@ -60,13 +56,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.ai.edge.gallery.proto.CheckInEntry
 import com.google.ai.edge.gallery.ui.home.SettingsDialog
-import com.google.ai.edge.gallery.ui.llmchat.LlmChatScreen
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -75,7 +69,6 @@ private enum class RecoveryTab(val label: String, val badge: String) {
   LOG("Log", "L"),
   INSIGHTS("Insights", "I"),
   HISTORY("History", "H"),
-  AI("AI", "G"),
 }
 
 @Composable
@@ -86,11 +79,8 @@ fun RecoveryApp(
   insightsViewModel: InsightsViewModel = hiltViewModel()
 ) {
   var selectedTab by rememberSaveable { mutableStateOf(RecoveryTab.LOG) }
-  var showAiChat by rememberSaveable { mutableStateOf(false) }
   var showSettingsDialog by remember { mutableStateOf(false) }
   val snackbarHostState = remember { SnackbarHostState() }
-
-  BackHandler(enabled = showAiChat) { showAiChat = false }
 
   val logUiState by recoveryViewModel.logUiState.collectAsState()
 
@@ -105,41 +95,39 @@ fun RecoveryApp(
     containerColor = MaterialTheme.colorScheme.background,
     snackbarHost = { SnackbarHost(snackbarHostState) },
     bottomBar = {
-      if (!showAiChat) {
-        NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
-          RecoveryTab.values().forEach { tab ->
-            NavigationBarItem(
-              selected = selectedTab == tab,
-              onClick = { selectedTab = tab },
-              icon = {
-                Box(
-                  modifier =
-                    Modifier.size(28.dp)
-                      .clip(CircleShape)
-                      .background(
-                        if (selectedTab == tab) {
-                          MaterialTheme.colorScheme.primary
-                        } else {
-                          MaterialTheme.colorScheme.surfaceContainerHigh
-                        }
-                      ),
-                  contentAlignment = Alignment.Center,
-                ) {
-                  Text(
-                    text = tab.badge,
-                    style = MaterialTheme.typography.labelLarge,
-                    color =
+      NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
+        RecoveryTab.values().forEach { tab ->
+          NavigationBarItem(
+            selected = selectedTab == tab,
+            onClick = { selectedTab = tab },
+            icon = {
+              Box(
+                modifier =
+                  Modifier.size(28.dp)
+                    .clip(CircleShape)
+                    .background(
                       if (selectedTab == tab) {
-                        MaterialTheme.colorScheme.onPrimary
+                        MaterialTheme.colorScheme.primary
                       } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                      },
-                  )
-                }
-              },
-              label = { Text(tab.label) },
-            )
-          }
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                      }
+                    ),
+                contentAlignment = Alignment.Center,
+              ) {
+                Text(
+                  text = tab.badge,
+                  style = MaterialTheme.typography.labelLarge,
+                  color =
+                    if (selectedTab == tab) {
+                      MaterialTheme.colorScheme.onPrimary
+                    } else {
+                      MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+              }
+            },
+            label = { Text(tab.label) },
+          )
         }
       }
     },
@@ -147,7 +135,7 @@ fun RecoveryApp(
     when (selectedTab) {
       RecoveryTab.LOG -> RecoveryLogScreen(
         contentPadding = innerPadding,
-        viewModel = recoveryViewModel,
+        viewModel = recoveryViewModel
       )
       RecoveryTab.INSIGHTS -> RecoveryInsightsScreen(
         contentPadding = innerPadding,
@@ -156,22 +144,12 @@ fun RecoveryApp(
       )
       RecoveryTab.HISTORY -> RecoveryHistoryScreen(
         contentPadding = innerPadding,
-        viewModel = recoveryViewModel
-      )
-      RecoveryTab.AI -> {
-        if (showAiChat) {
-          LlmChatScreen(
-            modelManagerViewModel = modelManagerViewModel,
-            navigateUp = { showAiChat = false },
-          )
-        } else {
-          AiLauncherScreen(
-            contentPadding = innerPadding,
-            onOpenChat = { showAiChat = true },
-            onOpenSettings = { showSettingsDialog = true },
-          )
+        viewModel = recoveryViewModel,
+        onEditEntry = { entry ->
+          recoveryViewModel.populateForm(entry)
+          selectedTab = RecoveryTab.LOG
         }
-      }
+      )
     }
   }
 
@@ -185,186 +163,83 @@ fun RecoveryApp(
 }
 
 @Composable
-private fun AiLauncherScreen(
-  contentPadding: PaddingValues,
-  onOpenChat: () -> Unit,
-  onOpenSettings: () -> Unit,
-) {
-  Column(
-    modifier =
-      Modifier.fillMaxSize()
-        .background(MaterialTheme.colorScheme.background)
-        .padding(contentPadding)
-        .padding(horizontal = 24.dp),
-    verticalArrangement = Arrangement.Center,
-    horizontalAlignment = Alignment.CenterHorizontally,
-  ) {
-    Text(
-      text = "Gemma 4",
-      style = MaterialTheme.typography.headlineLarge,
-      fontWeight = FontWeight.Bold,
-      color = MaterialTheme.colorScheme.onSurface,
-    )
-    Text(
-      text = "On-Device AI Chat",
-      style = MaterialTheme.typography.bodyLarge,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
-      modifier = Modifier.padding(top = 8.dp, bottom = 40.dp),
-    )
-    Button(
-      onClick = onOpenChat,
-      modifier = Modifier.fillMaxWidth(),
-    ) {
-      Text("Open Gemma 4 E2B Chat")
-    }
-    Spacer(modifier = Modifier.height(12.dp))
-    OutlinedButton(
-      onClick = onOpenSettings,
-      modifier = Modifier.fillMaxWidth(),
-    ) {
-      Icon(
-        imageVector = Icons.Rounded.Settings,
-        contentDescription = null,
-        modifier = Modifier.size(18.dp),
-      )
-      Spacer(modifier = Modifier.width(8.dp))
-      Text("Settings")
-    }
-  }
-}
-
-@Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun RecoveryLogScreen(
   contentPadding: PaddingValues,
-  viewModel: RecoveryViewModel,
+  viewModel: RecoveryViewModel
 ) {
-  val state by viewModel.logUiState.collectAsState()
+  val uiState by viewModel.logUiState.collectAsState()
+  val isEditing = uiState.date.isNotEmpty()
 
   LazyColumn(
-    modifier =
-      Modifier.fillMaxSize()
-        .background(
-          Brush.verticalGradient(
-            colors =
-              listOf(
-                MaterialTheme.colorScheme.surfaceContainerLowest,
-                MaterialTheme.colorScheme.background,
-                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.18f),
-              )
-          )
-        ),
+    modifier = Modifier.fillMaxSize().background(
+      Brush.verticalGradient(
+        colors = listOf(
+          MaterialTheme.colorScheme.surfaceContainerLowest,
+          MaterialTheme.colorScheme.background,
+          MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.18f),
+        )
+      )
+    ),
     contentPadding = PaddingValues(
-      start = 20.dp,
-      end = 20.dp,
+      start = 20.dp, end = 20.dp,
       top = contentPadding.calculateTopPadding() + 20.dp,
       bottom = contentPadding.calculateBottomPadding() + 28.dp,
     ),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
     item {
+      val eyebrow = if (isEditing) "Edit Check-In: ${uiState.date}" else "Daily Check-In"
       RecoveryHeroCard(
-        eyebrow = "Daily Check-In",
+        eyebrow = eyebrow,
         title = "Capture today before the hard parts blur together.",
-        body = "Track recovery-relevant signals now. Your entries are private and stay on your device.",
+        body = "Track recovery-relevant signals now. Your insights will update automatically.",
       )
     }
 
     item {
-      SectionCard(
-        title = "How are you feeling today?",
-        subtitle = "Use the sliders to log intensity today."
-      ) {
+      SectionCard(title = "Core Metrics", subtitle = "Use the sliders to log intensity today.") {
         TriggerSlider(
           label = "Craving intensity",
           description = "How strong were your urges to use today?",
-          value = state.cravingIntensity.toFloat(),
-          valueLabel = state.cravingIntensity.toString(),
-          lowLabel = "Quiet",
-          highLabel = "Loud",
-          onValueChange = { viewModel.updateCravingIntensity(it.toInt()) },
+          value = uiState.cravingIntensity.toFloat(),
+          onValueChange = { viewModel.updateCravingIntensity(it.toInt()) }
         )
         TriggerSlider(
           label = "Mood",
           description = "Overall, how would you rate your mood today?",
-          value = state.mood.toFloat(),
-          valueLabel = state.mood.toString(),
-          lowLabel = "Low",
-          highLabel = "Steady",
-          onValueChange = { viewModel.updateMood(it.toInt()) },
-        )
-        TriggerSlider(
-          label = "Sleep quality",
-          description = "How well did you sleep last night?",
-          value = state.sleepQuality.toFloat(),
-          valueLabel = state.sleepQuality.toString(),
-          lowLabel = "Restless",
-          highLabel = "Rested",
-          onValueChange = { viewModel.updateSleepQuality(it.toInt()) },
+          value = uiState.mood.toFloat(),
+          onValueChange = { viewModel.updateMood(it.toInt()) }
         )
         TriggerSlider(
           label = "Stress level",
           description = "How stressed did you feel today?",
-          value = state.stressLevel.toFloat(),
-          valueLabel = state.stressLevel.toString(),
-          lowLabel = "Calm",
-          highLabel = "Overloaded",
-          onValueChange = { viewModel.updateStressLevel(it.toInt()) },
+          value = uiState.stressLevel.toFloat(),
+          onValueChange = { viewModel.updateStressLevel(it.toInt()) }
         )
         TriggerSlider(
           label = "Social connection",
           description = "How connected to others did you feel today?",
-          value = state.socialConnection.toFloat(),
-          valueLabel = state.socialConnection.toString(),
-          lowLabel = "Isolated",
-          highLabel = "Connected",
-          onValueChange = { viewModel.updateSocialConnection(it.toInt()) },
+          value = uiState.socialConnection.toFloat(),
+          onValueChange = { viewModel.updateSocialConnection(it.toInt()) }
         )
         TriggerSlider(
           label = "Self-efficacy",
           description = "How confident are you in staying sober tomorrow?",
-          value = state.selfEfficacy.toFloat(),
-          valueLabel = state.selfEfficacy.toString(),
-          lowLabel = "Doubtful",
-          highLabel = "Confident",
-          onValueChange = { viewModel.updateSelfEfficacy(it.toInt()) },
+          value = uiState.selfEfficacy.toFloat(),
+          onValueChange = { viewModel.updateSelfEfficacy(it.toInt()) }
         )
       }
     }
 
     item {
-      SectionCard(
-        title = "Sleep Duration",
-        subtitle = "Actual hours of sleep last night."
-      ) {
-        OutlinedTextField(
-          value = state.sleepHours,
-          onValueChange = { viewModel.updateSleepHours(it) },
-          modifier = Modifier.fillMaxWidth(),
-          label = { Text("Hours slept last night") },
-          singleLine = true,
-          keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-          isError = state.sleepHoursError != null,
-          supportingText = state.sleepHoursError?.let { { Text(it) } },
-          colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surface,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-          ),
-        )
-      }
-    }
-
-    item {
-      SectionCard(
-        title = "Triggers Today",
-        subtitle = "Did anything specific trigger a craving or risk today?"
-      ) {
+      SectionCard(title = "Triggers Today", subtitle = "Did any specific situation occur?") {
         FlowRow(
           horizontalArrangement = Arrangement.spacedBy(8.dp),
           verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
           TriggerKeys.all.forEach { key ->
-            val selected = key in state.selectedTriggers
+            val selected = key in uiState.selectedTriggers
             AssistChip(
               onClick = { viewModel.toggleTrigger(key) },
               label = { Text(TriggerKeys.displayLabels[key] ?: key) },
@@ -383,45 +258,40 @@ private fun RecoveryLogScreen(
     }
 
     item {
-      SectionCard(
-        title = "Reflection",
-        subtitle = "Context for the reasoning engine."
-      ) {
+      SectionCard(title = "Daily Reflection", subtitle = "General thoughts about your day.") {
         OutlinedTextField(
-          value = state.hardestToday,
-          onValueChange = { viewModel.updateHardestToday(it) },
+          value = uiState.reflection,
+          onValueChange = { viewModel.updateReflection(it) },
           modifier = Modifier.fillMaxWidth(),
-          label = { Text("What was hardest today?") },
-          placeholder = { Text("A situation, feeling, or moment that felt risky or difficult...") },
-          minLines = 3,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedTextField(
-          value = state.helpedToday,
-          onValueChange = { viewModel.updateHelpedToday(it) },
-          modifier = Modifier.fillMaxWidth(),
-          label = { Text("What helped today?") },
-          placeholder = { Text("A coping strategy, person, routine, or thought that made things easier...") },
-          minLines = 3,
+          minLines = 4,
+          placeholder = { Text("What happened today? Any moments worth remembering?") }
         )
       }
     }
 
     item {
-      Button(
-        onClick = { viewModel.saveEntry() },
-        modifier = Modifier.fillMaxWidth().height(56.dp),
-        enabled = state.saveStatus != SaveStatus.SAVING && state.sleepHoursError == null,
-        shape = RoundedCornerShape(16.dp)
-      ) {
-        if (state.saveStatus == SaveStatus.SAVING) {
-          CircularProgressIndicator(
-            modifier = Modifier.size(24.dp),
-            color = MaterialTheme.colorScheme.onPrimary,
-            strokeWidth = 2.dp
-          )
-        } else {
-          Text("Save Daily Check-In", style = MaterialTheme.typography.titleMedium)
+      Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (isEditing) {
+          OutlinedButton(
+            onClick = { viewModel.resetForm() },
+            modifier = Modifier.weight(1f)
+          ) {
+            Text("Cancel Edit")
+          }
+        }
+        
+        Button(
+          onClick = { viewModel.saveEntry() },
+          modifier = if (isEditing) Modifier.weight(1f) else Modifier.fillMaxWidth(),
+          enabled = uiState.saveStatus == SaveStatus.IDLE,
+          colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+        ) {
+          if (uiState.saveStatus == SaveStatus.SAVING) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+          } else {
+            val label = if (isEditing) "Update Check-In" else "Save Check-In"
+            Text(label)
+          }
         }
       }
     }
@@ -434,29 +304,24 @@ private fun RecoveryInsightsScreen(
   viewModel: InsightsViewModel,
   modelManagerViewModel: ModelManagerViewModel
 ) {
-  val state by viewModel.uiState.collectAsState()
+  val uiState by viewModel.uiState.collectAsState()
 
   LaunchedEffect(Unit) {
     viewModel.checkModelAvailability(modelManagerViewModel)
-    viewModel.refresh()
   }
 
   LazyColumn(
-    modifier =
-      Modifier.fillMaxSize()
-        .background(
-          Brush.verticalGradient(
-            colors =
-              listOf(
-                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.20f),
-                MaterialTheme.colorScheme.background,
-                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.16f),
-              )
-          )
-        ),
+    modifier = Modifier.fillMaxSize().background(
+      Brush.verticalGradient(
+        colors = listOf(
+          MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.20f),
+          MaterialTheme.colorScheme.background,
+          MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.16f),
+        )
+      )
+    ),
     contentPadding = PaddingValues(
-      start = 20.dp,
-      end = 20.dp,
+      start = 20.dp, end = 20.dp,
       top = contentPadding.calculateTopPadding() + 20.dp,
       bottom = contentPadding.calculateBottomPadding() + 28.dp,
     ),
@@ -465,212 +330,98 @@ private fun RecoveryInsightsScreen(
     item {
       RecoveryHeroCard(
         eyebrow = "Insights",
-        title = "Private pattern summaries built for recovery support.",
-        body = "Analyze your data to find patterns and protective factors using Gemma 4 on-device AI.",
+        title = "AI-driven patterns for your recovery.",
+        body = "Private, on-device analysis grounded in your check-in history.",
       )
     }
 
-    // Section 1: Early Signals
-    if (state.earlySignals.isNotEmpty()) {
-      item {
-        SectionCard(title = "What's Shifting", subtitle = "Recent trends compared to your baseline.") {
-          state.earlySignals.forEach { signal ->
-            Row(modifier = Modifier.padding(vertical = 4.dp)) {
-              Text("•", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
-              Spacer(modifier = Modifier.width(8.dp))
-              Text(text = signal, style = MaterialTheme.typography.bodyMedium)
-            }
-          }
+    // 1. Early Signals
+    item {
+      InsightSectionCard(
+        title = "Early Signals",
+        subtitle = "What has been shifting recently?",
+        items = uiState.earlySignals,
+        color = MaterialTheme.colorScheme.error
+      )
+    }
+
+    // 2. Recurring Patterns (Gemma)
+    // 3. Protective Factors (Gemma)
+    when (val status = uiState.gemmaStatus) {
+      is GemmaInsightStatus.Done -> {
+        item {
+          InsightSectionCard(
+            title = "Recurring Patterns",
+            subtitle = "What tends to happen together?",
+            items = status.patterns.map { "${it.text}\n• ${it.evidence}" },
+            color = Color(0xFFD55D3F)
+          )
         }
-      }
-    } else if (state.entryCount < 4) {
-      item {
-        OutlinedCard(shape = RoundedCornerShape(24.dp)) {
-          Text(
-            text = "Keep logging — early signals appear after a few check-ins.",
-            modifier = Modifier.padding(20.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        item {
+          InsightSectionCard(
+            title = "Protective Factors",
+            subtitle = "What actually helps?",
+            items = status.protective.map { "${it.text}\n• ${it.evidence}" },
+            color = Color(0xFF317A52)
           )
         }
       }
-    }
-
-    // Gemma-powered sections
-    when (val status = state.gemmaStatus) {
-      is GemmaInsightStatus.Done -> {
-        // Section 2: Patterns
+      GemmaInsightStatus.Loading -> {
         item {
-          Text("Patterns Detected", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        }
-        items(status.patterns) { item ->
-          InsightCard(item = item, tone = MaterialTheme.colorScheme.error)
-        }
-
-        // Section 3: Protective Factors
-        item {
-          Text("Protective Factors", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        }
-        items(status.protective) { item ->
-          InsightCard(item = item, tone = Color(0xFF317A52))
-        }
-
-        // Section 5: Evidence
-        item {
-          SectionCard(
-            title = "Why the app says this",
-            subtitle = "Recent entries that fed these insights."
-          ) {
-            status.evidenceEntries.forEach { entry ->
-              val date = try {
-                LocalDate.parse(entry.date).format(DateTimeFormatter.ofPattern("MMM d"))
-              } catch (e: Exception) {
-                entry.date
-              }
-              val triggerList = entry.triggersList.joinToString(", ") { TriggerKeys.displayLabels[it] ?: it }
-              EvidenceRow(
-                label = date,
-                detail = "Craving: ${entry.cravingIntensity}, Stress: ${entry.stressLevel}, Sleep: ${entry.sleepHours}h / $triggerList"
-              )
-            }
-          }
-        }
-      }
-      is GemmaInsightStatus.Loading -> {
-        item {
-          Card(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
-            Column(
-              modifier = Modifier.padding(24.dp),
-              horizontalAlignment = Alignment.CenterHorizontally,
-              verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+          Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
               CircularProgressIndicator()
-              Text("Gemma is analyzing your entries...")
-              if (state.streamingText.isNotEmpty()) {
-                Text(
-                  text = state.streamingText,
-                  style = MaterialTheme.typography.bodySmall,
-                  color = MaterialTheme.colorScheme.onSurfaceVariant,
-                  maxLines = 4,
-                  overflow = TextOverflow.Ellipsis
-                )
-              }
+              Spacer(Modifier.height(8.dp))
+              Text("Analyzing history...", style = MaterialTheme.typography.bodyMedium)
             }
           }
         }
       }
-      is GemmaInsightStatus.NoModel -> {
+      else -> {
         item {
-          OutlinedCard(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-              Text("AI Insights Unavailable", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-              Text("Load Gemma 4 E2B in the main screen, then come back to generate insights.", style = MaterialTheme.typography.bodyMedium)
-              Button(onClick = { /* Navigate to Home? */ }, modifier = Modifier.fillMaxWidth()) {
-                Text("Go to Models")
-              }
-            }
-          }
-        }
-      }
-      is GemmaInsightStatus.NotEnoughData -> {
-        item {
-          OutlinedCard(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-              Text("More Data Needed", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-              Text("Log at least 5 check-ins to unlock AI-powered pattern insights.", style = MaterialTheme.typography.bodyMedium)
-              Text("${state.entryCount} of 5 check-ins logged", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            }
-          }
-        }
-      }
-      is GemmaInsightStatus.Idle, is GemmaInsightStatus.Error -> {
-        item {
-          Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+          Button(
+            onClick = { viewModel.generateInsights(modelManagerViewModel) },
+            modifier = Modifier.fillMaxWidth()
           ) {
-            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-              Text("Generate AI Insights", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-              Text("Uses Gemma 4 E2B on your device. Nothing leaves your phone.", style = MaterialTheme.typography.bodyMedium)
-              if (status is GemmaInsightStatus.Error) {
-                Text(status.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-              }
-              Button(
-                onClick = { viewModel.generateInsights(modelManagerViewModel) },
-                modifier = Modifier.fillMaxWidth()
-              ) {
-                Text("Generate Insights")
-              }
-            }
+            Text("Generate AI Insights")
           }
         }
       }
     }
 
-    // Section 4: Consistency
-    state.consistency?.let { consistency ->
+    // 4. Consistency
+    uiState.consistency?.let { c ->
       item {
-        SectionCard(title = "Your Consistency", subtitle = consistency.message) {
-          Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            ConsistencyStat(label = "Streak", value = "${consistency.currentStreak}d")
-            ConsistencyStat(label = "This Week", value = "${7 - consistency.missedThisWeek}/7")
-            ConsistencyStat(label = "Total", value = consistency.totalEntries.toString())
-          }
-        }
+        InsightSectionCard(
+          title = "Consistency",
+          subtitle = "Behavioral engagement with your recovery.",
+          items = listOf(c.message),
+          color = MaterialTheme.colorScheme.primary
+        )
       }
     }
   }
 }
 
 @Composable
-private fun InsightCard(item: InsightItem, tone: Color) {
-  Card(
-    shape = RoundedCornerShape(24.dp),
-    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-  ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(tone))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(text = item.text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-      }
-      Text(
-        text = item.evidence,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-      )
-    }
-  }
-}
-
-@Composable
-private fun ConsistencyStat(label: String, value: String) {
-  Column(horizontalAlignment = Alignment.CenterHorizontally) {
-    Text(text = value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-    Text(text = label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-  }
-}
-
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun RecoveryHistoryScreen(contentPadding: PaddingValues, viewModel: RecoveryViewModel) {
+private fun RecoveryHistoryScreen(
+  contentPadding: PaddingValues,
+  viewModel: RecoveryViewModel,
+  onEditEntry: (CheckInEntry) -> Unit
+) {
   val history by viewModel.historyEntries.collectAsState()
 
   LazyColumn(
-    modifier =
-      Modifier.fillMaxSize()
-        .background(
-          Brush.verticalGradient(
-            colors =
-              listOf(
-                MaterialTheme.colorScheme.surfaceContainerLow,
-                MaterialTheme.colorScheme.background,
-              )
-          )
-        ),
+    modifier = Modifier.fillMaxSize().background(
+      Brush.verticalGradient(
+        colors = listOf(
+          MaterialTheme.colorScheme.surfaceContainerLow,
+          MaterialTheme.colorScheme.background,
+        )
+      )
+    ),
     contentPadding = PaddingValues(
-      start = 20.dp,
-      end = 20.dp,
+      start = 20.dp, end = 20.dp,
       top = contentPadding.calculateTopPadding() + 20.dp,
       bottom = contentPadding.calculateBottomPadding() + 28.dp,
     ),
@@ -679,50 +430,34 @@ private fun RecoveryHistoryScreen(contentPadding: PaddingValues, viewModel: Reco
     item {
       RecoveryHeroCard(
         eyebrow = "History",
-        title = "A readable timeline of your progress.",
-        body = "Review your past entries and see how your recovery journey is evolving.",
+        title = "Your recovery journey, day by day.",
+        body = "View and edit your past entries to keep your record accurate.",
       )
+      
+      // Temporary Seed Button for Testing
+      Button(
+        onClick = { viewModel.seedMockData() },
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+      ) {
+        Text("Seed 21 Days of Mock Data")
+      }
     }
 
     items(history) { entry ->
-      HistoryCard(entry = entry)
+      HistoryCard(entry = entry, onEdit = { onEditEntry(entry) })
     }
   }
 }
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun HistoryCard(entry: CheckInEntry) {
-  val dateLabel = remember(entry.date) {
+private fun HistoryCard(entry: CheckInEntry, onEdit: () -> Unit) {
+  val dateStr = remember(entry.date) {
     try {
-      val date = LocalDate.parse(entry.date)
-      val today = LocalDate.now()
-      when {
-        date == today -> "Today"
-        date == today.minusDays(1) -> "Yesterday"
-        else -> date.format(DateTimeFormatter.ofPattern("EEE, MMM d"))
-      }
+      LocalDate.parse(entry.date).format(DateTimeFormatter.ofPattern("EEEE, MMM d"))
     } catch (e: Exception) {
       entry.date
     }
-  }
-
-  val riskLabel = remember(entry.cravingIntensity, entry.stressLevel) {
-    val avg = (entry.cravingIntensity + entry.stressLevel) / 2f
-    when {
-      avg >= 7 -> "Elevated"
-      avg >= 4 -> "Moderate"
-      else -> "Lower"
-    }
-  }
-
-  val headline = remember(entry) {
-    val items = mutableListOf<String>()
-    if (entry.cravingIntensity >= 7) items.add("Craving-heavy")
-    if (entry.stressLevel >= 7) items.add("High stress")
-    if (entry.sleepQuality >= 8) items.add("Good sleep")
-    if (entry.mood <= 3) items.add("Low mood")
-    if (items.isEmpty()) "Steady day" else items.take(2).joinToString(", ")
   }
 
   Card(
@@ -733,51 +468,33 @@ private fun HistoryCard(entry: CheckInEntry) {
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically
       ) {
-        Text(text = dateLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        Box(
-          modifier =
-            Modifier.clip(RoundedCornerShape(999.dp))
-              .background(
-                when (riskLabel) {
-                  "Elevated" -> MaterialTheme.colorScheme.errorContainer
-                  "Moderate" -> Color(0xFFFFF4E1)
-                  else -> MaterialTheme.colorScheme.primaryContainer
-                }
-              )
-              .padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-          Text(
-            text = "$riskLabel Risk",
-            style = MaterialTheme.typography.labelMedium,
-            color = when (riskLabel) {
-              "Elevated" -> MaterialTheme.colorScheme.onErrorContainer
-              "Moderate" -> Color(0xFF7A5600)
-              else -> MaterialTheme.colorScheme.onPrimaryContainer
-            },
-          )
+        Text(text = dateStr, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) {
+          Icon(Icons.Rounded.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
         }
       }
 
-      Text(text = headline, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+      Text(
+        text = if (entry.cravingIntensity >= 7) "Difficult Day" else "Steady Day",
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold
+      )
 
-      if (entry.hardestToday.isNotEmpty()) {
+      if (entry.reflection.isNotEmpty()) {
         Text(
-          text = entry.hardestToday,
+          text = entry.reflection,
           style = MaterialTheme.typography.bodyMedium,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
-          maxLines = 2,
+          maxLines = 3,
           overflow = TextOverflow.Ellipsis,
         )
       }
 
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        entry.triggersList.forEach { key ->
-          TagItem(label = TriggerKeys.displayLabels[key] ?: key)
-        }
-        if (entry.helpedToday.isNotEmpty()) {
-          TagItem(label = "✓ helped", color = Color(0xFF317A52).copy(alpha = 0.1f))
+        entry.triggersList.forEach { tag ->
+          TagItem(label = TriggerKeys.displayLabels[tag] ?: tag)
         }
       }
     }
@@ -785,15 +502,54 @@ private fun HistoryCard(entry: CheckInEntry) {
 }
 
 @Composable
-private fun TagItem(label: String, color: Color = MaterialTheme.colorScheme.surfaceContainerHighest) {
-  Box(
-    modifier =
-      Modifier.clip(RoundedCornerShape(999.dp))
-        .background(color)
-        .padding(horizontal = 10.dp, vertical = 6.dp)
+private fun InsightSectionCard(title: String, subtitle: String, items: List<String>, color: Color) {
+  Card(
+    shape = RoundedCornerShape(24.dp),
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+  ) {
+    Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(color))
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(text = title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+      }
+      Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+      
+      items.forEach { item ->
+        Text(text = item, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+      }
+    }
+  }
+}
+
+@Composable
+private fun TriggerSlider(label: String, description: String, value: Float, onValueChange: (Float) -> Unit) {
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Column(modifier = Modifier.weight(1f)) {
+        Text(text = label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+      }
+      Text(text = value.toInt().toString(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+    }
+    Slider(value = value, onValueChange = onValueChange, valueRange = 1f..10f, steps = 8)
+  }
+}
+
+@Composable
+private fun TagItem(label: String) {
+  Surface(
+    shape = RoundedCornerShape(999.dp),
+    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    modifier = Modifier.padding(vertical = 4.dp)
   ) {
     Text(
       text = label,
+      modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
       style = MaterialTheme.typography.labelMedium,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -808,48 +564,26 @@ private fun RecoveryHeroCard(eyebrow: String, title: String, body: String) {
     shadowElevation = 2.dp,
   ) {
     Column(
-      modifier =
-        Modifier.fillMaxWidth()
-          .background(
-            brush =
-              Brush.linearGradient(
-                colors =
-                  listOf(
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.08f),
-                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
-                  )
-              )
+      modifier = Modifier.fillMaxWidth().background(
+        brush = Brush.linearGradient(
+          colors = listOf(
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+            MaterialTheme.colorScheme.secondary.copy(alpha = 0.08f),
+            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
           )
-          .padding(24.dp),
+        )
+      ).padding(24.dp),
       verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-      Text(
-        text = eyebrow.uppercase(),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-      )
-      Text(
-        text = title,
-        style = MaterialTheme.typography.headlineSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurface,
-      )
-      Text(
-        text = body,
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
+      Text(text = eyebrow.uppercase(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+      Text(text = title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+      Text(text = body, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
   }
 }
 
 @Composable
-private fun SectionCard(
-  title: String,
-  subtitle: String,
-  content: @Composable ColumnScope.() -> Unit,
-) {
+private fun SectionCard(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
   Card(
     shape = RoundedCornerShape(24.dp),
     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -857,68 +591,9 @@ private fun SectionCard(
     Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
       Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(text = title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(
-          text = subtitle,
-          style = MaterialTheme.typography.bodyMedium,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
       content()
     }
-  }
-}
-
-@Composable
-private fun TriggerSlider(
-  label: String,
-  description: String,
-  value: Float,
-  valueLabel: String,
-  lowLabel: String,
-  highLabel: String,
-  onValueChange: (Float) -> Unit,
-) {
-  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    Row(
-      modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      Column(modifier = Modifier.weight(1f)) {
-        Text(text = label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text(
-          text = description,
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-      }
-      Text(
-        text = valueLabel,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 8.dp)
-      )
-    }
-    Slider(value = value, onValueChange = onValueChange, valueRange = 1f..10f, steps = 8)
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-      Text(text = lowLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-      Text(text = highLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-  }
-}
-
-@Composable
-private fun EvidenceRow(label: String, detail: String) {
-  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-      Text(text = label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-      Text(text = "Support", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-    }
-    Text(
-      text = detail,
-      style = MaterialTheme.typography.bodyMedium,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    HorizontalDivider(modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
   }
 }
