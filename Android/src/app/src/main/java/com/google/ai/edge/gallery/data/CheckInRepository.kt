@@ -13,6 +13,7 @@ interface CheckInRepository {
   fun getRecentEntries(days: Int): List<CheckInEntry>
   fun deleteEntry(date: String)
   fun getEntryCount(): Int
+  fun clearAllEntries()
 }
 
 class DefaultCheckInRepository(
@@ -53,5 +54,11 @@ class DefaultCheckInRepository(
 
   override fun getEntryCount(): Int = runBlocking {
     dataStore.data.first().entriesCount
+  }
+
+  override fun clearAllEntries() {
+    runBlocking {
+      dataStore.updateData { it.toBuilder().clearEntries().build() }
+    }
   }
 }
