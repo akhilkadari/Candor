@@ -344,17 +344,26 @@ class InsightsViewModel @Inject constructor(
 
   private fun parseGemmaResponse(raw: String): ParsedGemmaResponse {
     return try {
-      val start = raw.indexOf('{')
-      val end = raw.lastIndexOf('}')
-      if (start == -1 || end == -1) {
-          Log.e(TAG, "JSON block not found in response: $raw")
-          return ParsedGemmaError("Invalid model output format.")
+      // Strip markdown fences the model may add despite instructions
+      val cleaned = raw.replace("```json", "").replace("```", "")
+
+      // The model sometimes echoes the JSON template before outputting actual data.
+      // Search backwards from the last "patterns" key to find the actual response block,
+      // skipping any earlier template echo.
+      val patternsIdx = cleaned.lastIndexOf("\"patterns\"")
+      val start = if (patternsIdx >= 0) cleaned.lastIndexOf('{', patternsIdx) else cleaned.indexOf('{')
+      val end = cleaned.lastIndexOf('}')
+
+      if (start == -1 || end == -1 || start >= end) {
+        Log.e(TAG, "JSON block not found in response: $raw")
+        return ParsedGemmaError("Invalid model output format.")
       }
-      val json = raw.substring(start, end + 1)
+      val json = cleaned.substring(start, end + 1)
 
       val parsed = Gson().fromJson(json, RawResponse::class.java)
-      val patterns = parsed.patterns.mapNotNull(::toInsightItem).take(2)
-      val protectiveFactors = (parsed.protectiveFactors.ifEmpty { parsed.protective })
+      // Gson does not use Kotlin default values for null JSON fields, so guard against null lists.
+      val patterns = (parsed.patterns ?: emptyList()).mapNotNull(::toInsightItem).take(2)
+      val protectiveFactors = ((parsed.protectiveFactors ?: emptyList()).ifEmpty { parsed.protective ?: emptyList() })
         .mapNotNull(::toInsightItem)
         .take(2)
 
