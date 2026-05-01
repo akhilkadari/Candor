@@ -120,7 +120,8 @@ fun RecoveryApp(
     when (selectedTab) {
       RecoveryTab.LOG -> RecoveryLogScreen(
         contentPadding = innerPadding,
-        viewModel = recoveryViewModel
+        viewModel = recoveryViewModel,
+        insightsViewModel = insightsViewModel
       )
       RecoveryTab.INSIGHTS -> RecoveryInsightsScreen(
         contentPadding = innerPadding,
@@ -151,32 +152,31 @@ fun RecoveryApp(
 @OptIn(ExperimentalLayoutApi::class)
 private fun RecoveryLogScreen(
   contentPadding: PaddingValues,
-  viewModel: RecoveryViewModel
+  viewModel: RecoveryViewModel,
+  insightsViewModel: InsightsViewModel
 ) {
   val uiState by viewModel.logUiState.collectAsState()
-  val historyEntries by viewModel.historyEntries.collectAsState()
+  val history by viewModel.historyEntries.collectAsState()
   val isEditing = uiState.date.isNotEmpty()
-  val streak = remember(historyEntries) { computeStreak(historyEntries) }
+
+  val consistency = remember(history) {
+    InsightsEngine.computeConsistency(history)
+  }
 
   LazyColumn(
-    modifier = Modifier.fillMaxSize().background(
-      Brush.verticalGradient(
-        colors = listOf(
-          MaterialTheme.colorScheme.surfaceContainerLowest,
-          MaterialTheme.colorScheme.background,
-          MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.18f),
-        )
-      )
-    ),
+    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
     contentPadding = PaddingValues(
       start = 20.dp, end = 20.dp,
-      top = contentPadding.calculateTopPadding() + 20.dp,
+      top = contentPadding.calculateTopPadding(),
       bottom = contentPadding.calculateBottomPadding() + 28.dp,
     ),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
     item {
-      LogHeroCard(isEditing = isEditing, editDate = uiState.date, streak = streak)
+      CandorPageHeader(
+        subtitle = "Your patterns, decoded.",
+        streak = consistency.currentStreak
+      )
     }
 
     item {
@@ -297,29 +297,17 @@ private fun RecoveryInsightsScreen(
   }
 
   LazyColumn(
-    modifier = Modifier.fillMaxSize().background(
-      Brush.verticalGradient(
-        colors = listOf(
-          MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.20f),
-          MaterialTheme.colorScheme.background,
-          MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.16f),
-        )
-      )
-    ),
+    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
     contentPadding = PaddingValues(
       start = 20.dp, end = 20.dp,
-      top = contentPadding.calculateTopPadding() + 20.dp,
+      top = contentPadding.calculateTopPadding(),
       bottom = contentPadding.calculateBottomPadding() + 28.dp,
     ),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
-    item { CandorPageHeader(subtitle = "Your patterns, decoded.") }
-
     item {
-      RecoveryHeroCard(
-        eyebrow = "Insights",
-        title = "Turn your log history into signals you can act on.",
-        body = "Gemma 4 E2B analyzes your saved check-ins on-device, then stores the latest insight snapshot here.",
+      CandorPageHeader(
+        subtitle = "Your patterns, decoded."
       )
     }
 
@@ -399,28 +387,17 @@ private fun RecoveryHistoryScreen(
   val history by viewModel.historyEntries.collectAsState()
 
   LazyColumn(
-    modifier = Modifier.fillMaxSize().background(
-      Brush.verticalGradient(
-        colors = listOf(
-          MaterialTheme.colorScheme.surfaceContainerLow,
-          MaterialTheme.colorScheme.background,
-        )
-      )
-    ),
+    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
     contentPadding = PaddingValues(
       start = 20.dp, end = 20.dp,
-      top = contentPadding.calculateTopPadding() + 20.dp,
+      top = contentPadding.calculateTopPadding(),
       bottom = contentPadding.calculateBottomPadding() + 28.dp,
     ),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
-    item { CandorPageHeader(subtitle = "Your journey, day by day.") }
-
     item {
-      RecoveryHeroCard(
-        eyebrow = "History",
-        title = "Your recovery journey, day by day.",
-        body = "View and edit your past entries to keep your record accurate.",
+      CandorPageHeader(
+        subtitle = "Your journey, day by day."
       )
     }
 
@@ -489,7 +466,8 @@ private fun HistoryCard(entry: CheckInEntry, onEdit: () -> Unit) {
 
   Card(
     shape = RoundedCornerShape(24.dp),
-    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
   ) {
     Column(
       modifier = Modifier.fillMaxWidth().padding(20.dp),
@@ -560,7 +538,8 @@ private fun InsightSectionCard(
 ) {
   Card(
     shape = RoundedCornerShape(24.dp),
-    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
   ) {
     Column(
       modifier = Modifier.fillMaxWidth().padding(20.dp),
@@ -615,7 +594,8 @@ private fun InsightActionCard(
 ) {
   Card(
     shape = RoundedCornerShape(24.dp),
-    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
   ) {
     Column(
       modifier = Modifier.fillMaxWidth().padding(20.dp),
@@ -770,160 +750,52 @@ private fun TagItem(label: String) {
 }
 
 @Composable
-private fun LogHeroCard(isEditing: Boolean, editDate: String, streak: Int) {
-  val hour = LocalTime.now().hour
-  val greeting = when {
-    hour < 12 -> "Good morning"
-    hour < 17 -> "Good afternoon"
-    else -> "Good evening"
-  }
-  val dayName = LocalDate.now().dayOfWeek.name
-    .lowercase()
-    .replaceFirstChar { it.uppercase() }
-  val streakText = when (streak) {
-    0 -> null
-    1 -> "🔥 1-day streak"
-    else -> "🔥 $streak-day streak"
-  }
-
-  Surface(
-    color = Color.Transparent,
-    shape = RoundedCornerShape(28.dp),
-    shadowElevation = 2.dp,
-  ) {
-    Column(
-      modifier = Modifier
-        .fillMaxWidth()
-        .background(
-          brush = Brush.linearGradient(
-            colors = listOf(
-              MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-              MaterialTheme.colorScheme.secondary.copy(alpha = 0.08f),
-              MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
-            )
-          )
-        )
-        .padding(24.dp),
-      verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-      Text(
-        text = "Candor",
-        style = MaterialTheme.typography.headlineLarge,
-        fontWeight = FontWeight.ExtraBold,
-        color = MaterialTheme.colorScheme.primary,
-      )
-
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Text(
-          text = "$greeting, $dayName",
-          style = MaterialTheme.typography.bodyLarge,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        streakText?.let {
-          Surface(
-            shape = RoundedCornerShape(999.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
-          ) {
-            Text(
-              text = it,
-              modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-              style = MaterialTheme.typography.labelMedium,
-              color = MaterialTheme.colorScheme.onPrimaryContainer,
-              fontWeight = FontWeight.SemiBold,
-            )
-          }
-        }
-      }
-
-      Spacer(modifier = Modifier.height(2.dp))
-
-      Text(
-        text = if (isEditing) "EDITING: $editDate" else "DAILY CHECK-IN",
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-      )
-      Text(
-        text = "Capture today before the hard parts blur together.",
-        style = MaterialTheme.typography.headlineSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurface,
-      )
-      Text(
-        text = "Track recovery-relevant signals now, then refresh the Insights tab to analyze the full log history.",
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
-    }
-  }
-}
-
-@Composable
-private fun CandorPageHeader(subtitle: String) {
+private fun CandorPageHeader(
+  subtitle: String,
+  streak: Int? = null,
+  modifier: Modifier = Modifier
+) {
   Column(
-    modifier = Modifier
+    modifier = modifier
       .fillMaxWidth()
-      .padding(bottom = 4.dp),
+      .padding(top = 32.dp, bottom = 16.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
-    verticalArrangement = Arrangement.spacedBy(4.dp),
+    verticalArrangement = Arrangement.spacedBy(4.dp)
   ) {
     Text(
       text = "Candor",
-      style = MaterialTheme.typography.headlineLarge,
+      style = MaterialTheme.typography.displaySmall,
       fontWeight = FontWeight.ExtraBold,
-      color = MaterialTheme.colorScheme.primary,
-      textAlign = TextAlign.Center,
+      color = MaterialTheme.colorScheme.primary
     )
     Text(
       text = subtitle,
       style = MaterialTheme.typography.bodyMedium,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
-      textAlign = TextAlign.Center,
+      modifier = Modifier.padding(horizontal = 32.dp),
+      textAlign = androidx.compose.ui.text.style.TextAlign.Center
     )
-  }
-}
 
-@Composable
-private fun RecoveryHeroCard(eyebrow: String, title: String, body: String) {
-  Surface(
-    color = Color.Transparent,
-    shape = RoundedCornerShape(28.dp),
-    shadowElevation = 2.dp,
-  ) {
-    Column(
-      modifier = Modifier
-        .fillMaxWidth()
-        .background(
-          brush = Brush.linearGradient(
-            colors = listOf(
-              MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-              MaterialTheme.colorScheme.secondary.copy(alpha = 0.08f),
-              MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
-            )
+    if (streak != null && streak > 0) {
+      Spacer(modifier = Modifier.height(8.dp))
+      Surface(
+        color = Color(0xFFEADDFF), // Light purple
+        shape = RoundedCornerShape(999.dp),
+      ) {
+        Row(
+          modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+          Text(text = "🔥", style = MaterialTheme.typography.labelLarge)
+          Text(
+            text = "$streak-day streak",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF21005D)
           )
-        )
-        .padding(24.dp),
-      verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-      Text(
-        text = eyebrow.uppercase(),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary
-      )
-      Text(
-        text = title,
-        style = MaterialTheme.typography.headlineSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurface
-      )
-      Text(
-        text = body,
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-      )
+        }
+      }
     }
   }
 }
@@ -937,7 +809,8 @@ private fun formatInsightTimestamp(timestamp: Long): String {
 private fun SectionCard(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
   Card(
     shape = RoundedCornerShape(24.dp),
-    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
   ) {
     Column(
       modifier = Modifier.fillMaxWidth().padding(20.dp),
@@ -954,19 +827,4 @@ private fun SectionCard(title: String, subtitle: String, content: @Composable Co
       content()
     }
   }
-}
-
-private fun computeStreak(entries: List<CheckInEntry>): Int {
-  if (entries.isEmpty()) return 0
-  val today = LocalDate.now()
-  val entryDates = entries.mapNotNull {
-    try { LocalDate.parse(it.date) } catch (e: Exception) { null }
-  }.toSet()
-  var streak = 0
-  var checkDate = if (entryDates.contains(today)) today else today.minusDays(1)
-  while (entryDates.contains(checkDate)) {
-    streak++
-    checkDate = checkDate.minusDays(1)
-  }
-  return streak
 }
