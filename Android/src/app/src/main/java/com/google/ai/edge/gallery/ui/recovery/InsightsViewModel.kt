@@ -8,6 +8,7 @@ import com.google.ai.edge.gallery.data.Accelerator
 import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.CheckInRepository
 import com.google.ai.edge.gallery.data.ConfigKeys
+import com.google.ai.edge.gallery.data.ModelInitializationStatusType
 import com.google.ai.edge.gallery.data.recovery.InsightRepository
 import com.google.ai.edge.gallery.proto.CheckInEntry
 import com.google.ai.edge.gallery.ui.llmchat.LlmModelInstance
@@ -128,8 +129,19 @@ class InsightsViewModel @Inject constructor(
         return@launch
       }
 
+      val previousAccelerator =
+        model.getStringConfigValue(
+          key = ConfigKeys.ACCELERATOR,
+          defaultValue = requiredAccelerator,
+        )
       ensureNpuConfiguration(model, requiredAccelerator)
-      ensureModelInitializedOnNpu(modelManagerViewModel, task, model)
+      val initializationError =
+        ensureModelInitializedOnNpu(
+          modelManagerViewModel = modelManagerViewModel,
+          task = task,
+          model = model,
+          forceReinitialize = model.instance == null || previousAccelerator != requiredAccelerator,
+        )
 
       val instance = model.instance as? LlmModelInstance
       if (instance == null) {
@@ -137,7 +149,8 @@ class InsightsViewModel @Inject constructor(
           it.copy(
             gemmaStatus =
               GemmaInsightStatus.Error(
-                "Model could not be initialized with $requiredAccelerator using $PREFERRED_MODEL_FILE."
+                initializationError
+                  ?: "Model could not be initialized with $requiredAccelerator using $PREFERRED_MODEL_FILE."
               )
           )
         }
@@ -272,14 +285,39 @@ class InsightsViewModel @Inject constructor(
     modelManagerViewModel: ModelManagerViewModel,
     task: com.google.ai.edge.gallery.data.Task,
     model: com.google.ai.edge.gallery.data.Model,
-  ) {
-    Log.d(TAG, "Initializing insights model with file ${model.downloadFileName} on ${model.getStringConfigValue(ConfigKeys.ACCELERATOR)}")
-    modelManagerViewModel.initializeModel(context, task, model, force = true)
-    var retries = 75
-    while (model.instance == null && model.initializing && retries > 0) {
+    forceReinitialize: Boolean,
+  ): String? {
+    Log.d(
+      TAG,
+      "Initializing insights model with file ${model.downloadFileName} on ${model.getStringConfigValue(ConfigKeys.ACCELERATOR)} force=$forceReinitialize"
+    )
+
+    if (model.instance != null && !forceReinitialize) {
+      return null
+    }
+
+    modelManagerViewModel.initializeModel(context, task, model, force = forceReinitialize)
+
+    var retries = 100
+    while (retries > 0) {
+      if (model.instance != null) {
+        return null
+      }
+
+      val initStatus =
+        modelManagerViewModel.uiState.value.modelInitializationStatus[model.name]
+
+      if (initStatus?.status == ModelInitializationStatusType.ERROR) {
+        return initStatus.error.ifBlank {
+          "Failed to initialize ${model.name} on ${model.getStringConfigValue(ConfigKeys.ACCELERATOR)}."
+        }
+      }
+
       kotlinx.coroutines.delay(200)
       retries--
     }
+
+    return "Timed out initializing ${model.name} on ${model.getStringConfigValue(ConfigKeys.ACCELERATOR)}."
   }
 
   private sealed interface ParsedGemmaResponse
