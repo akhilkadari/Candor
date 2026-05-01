@@ -1,6 +1,8 @@
 package com.google.ai.edge.gallery.ui.recovery
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -58,6 +61,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.ai.edge.gallery.proto.CheckInEntry
 import com.google.ai.edge.gallery.ui.home.SettingsDialog
@@ -66,6 +70,18 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+
+private val HistoryColorGood     = Color(0xFF4CAF82)
+private val HistoryColorWatch    = Color(0xFFD4953A)
+private val HistoryColorHighRisk = Color(0xFFD45A4A)
+private val HistoryColorEmpty    = Color(0xFF2C2C2E)
+
+private fun DayColor.toHistoryColor(): Color = when (this) {
+  DayColor.GOOD      -> HistoryColorGood
+  DayColor.WATCH     -> HistoryColorWatch
+  DayColor.HIGH_RISK -> HistoryColorHighRisk
+  DayColor.EMPTY     -> HistoryColorEmpty
+}
 
 private enum class RecoveryTab(val label: String, val badge: String) {
   LOG("Log", "L"),
@@ -408,7 +424,7 @@ private fun RecoveryHistoryScreen(
   viewModel: RecoveryViewModel,
   onEditEntry: (CheckInEntry) -> Unit
 ) {
-  val history by viewModel.historyEntries.collectAsState()
+  val historyState by viewModel.historyScreenState.collectAsState()
 
   LazyColumn(
     modifier = Modifier.fillMaxSize().background(
@@ -426,26 +442,188 @@ private fun RecoveryHistoryScreen(
     ),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
+    // ── Header ───────────────────────────────────────────────────────────
     item {
-      RecoveryHeroCard(
-        eyebrow = "History",
-        title = "Your recovery journey, day by day.",
-        body = "View and edit your past entries to keep your record accurate.",
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
+      ) {
+        Column {
+          Text(
+            text = "YOUR JOURNEY",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 1.sp,
+          )
+          Text(
+            text = "History",
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+          )
+        }
+
+        if (historyState.streak > 0) {
+          Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+              modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+              contentAlignment = Alignment.Center,
+            ) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "🔥", fontSize = 16.sp)
+                Spacer(Modifier.width(4.dp))
+                Text(
+                  text = "${historyState.streak}",
+                  color = MaterialTheme.colorScheme.onSurface,
+                  fontSize = 18.sp,
+                  fontWeight = FontWeight.Bold,
+                )
+              }
+            }
+            Text(
+              text = "day streak",
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+              fontSize = 11.sp,
+              modifier = Modifier.padding(top = 2.dp),
+            )
+          }
+        }
+      }
+    }
+
+    // ── Weekly calendar ───────────────────────────────────────────────────
+    item {
+      WeekCalendarSection(
+        days = historyState.weekDays,
+        selectedDate = historyState.selectedDate,
+        onDayClick = { viewModel.selectWeekDay(it) },
       )
-      
-      // Temporary Seed Button for Testing
+    }
+
+    // ── Seed button ───────────────────────────────────────────────────────
+    item {
       Button(
         onClick = { viewModel.seedMockData() },
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+        modifier = Modifier.fillMaxWidth(),
+        colors = ButtonDefaults.buttonColors(
+          containerColor = MaterialTheme.colorScheme.secondaryContainer,
+          contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        ),
       ) {
         Text("Seed 21 Days of Mock Data")
       }
     }
 
-    items(history) { entry ->
-      HistoryCard(entry = entry, onEdit = { onEditEntry(entry) })
+    // ── Entries section header ────────────────────────────────────────────
+    item {
+      val headerText = historyState.selectedDate
+        ?.format(DateTimeFormatter.ofPattern("MMM d"))
+        ?.uppercase()
+        ?: "RECENT ENTRIES"
+      Text(
+        text = headerText,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(top = 4.dp),
+      )
     }
+
+    // ── Entries ───────────────────────────────────────────────────────────
+    if (historyState.displayedEntries.isEmpty()) {
+      item {
+        Text(
+          text = if (historyState.selectedDate != null)
+            "No entry logged for this day."
+          else
+            "No entries yet. Start logging to see your history.",
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          fontSize = 14.sp,
+          modifier = Modifier.padding(vertical = 8.dp),
+        )
+      }
+    } else {
+      items(historyState.displayedEntries) { entry ->
+        HistoryCard(entry = entry, onEdit = { onEditEntry(entry) })
+      }
+    }
+  }
+}
+
+@Composable
+private fun WeekCalendarSection(
+  days: List<WeekDayData>,
+  selectedDate: LocalDate?,
+  onDayClick: (LocalDate) -> Unit,
+) {
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      days.forEach { day ->
+        val isSelected = day.date == selectedDate
+        Column(
+          modifier = Modifier.weight(1f),
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+          Text(
+            text = day.label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+          )
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .aspectRatio(1f)
+              .clip(RoundedCornerShape(8.dp))
+              .background(day.color.toHistoryColor())
+              .then(
+                if (isSelected) Modifier.border(
+                  width = 2.dp,
+                  color = Color.White,
+                  shape = RoundedCornerShape(8.dp),
+                ) else Modifier
+              )
+              .clickable { onDayClick(day.date) },
+          )
+        }
+      }
+    }
+
+    Spacer(Modifier.height(2.dp))
+    Row(
+      horizontalArrangement = Arrangement.spacedBy(16.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      HistoryLegendItem(color = HistoryColorGood,     label = "good")
+      HistoryLegendItem(color = HistoryColorWatch,    label = "watch")
+      HistoryLegendItem(color = HistoryColorHighRisk, label = "high risk")
+    }
+  }
+}
+
+@Composable
+private fun HistoryLegendItem(color: Color, label: String) {
+  Row(
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(4.dp),
+  ) {
+    Box(
+      modifier = Modifier
+        .size(8.dp)
+        .clip(CircleShape)
+        .background(color),
+    )
+    Text(text = label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
   }
 }
 

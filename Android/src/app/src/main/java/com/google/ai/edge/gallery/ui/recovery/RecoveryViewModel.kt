@@ -28,6 +28,19 @@ data class LogUiState(
   val saveStatus: SaveStatus = SaveStatus.IDLE,
 )
 
+data class WeekDayData(
+  val date: LocalDate,
+  val label: String,
+  val color: DayColor,
+)
+
+data class HistoryScreenState(
+  val weekDays: List<WeekDayData> = emptyList(),
+  val selectedDate: LocalDate? = null,
+  val displayedEntries: List<CheckInEntry> = emptyList(),
+  val streak: Int = 0,
+)
+
 @HiltViewModel
 class RecoveryViewModel @Inject constructor(
   private val checkInRepository: CheckInRepository,
@@ -39,6 +52,9 @@ class RecoveryViewModel @Inject constructor(
   private val _historyEntries = MutableStateFlow<List<CheckInEntry>>(emptyList())
   val historyEntries: StateFlow<List<CheckInEntry>> = _historyEntries.asStateFlow()
 
+  private val _historyScreenState = MutableStateFlow(HistoryScreenState())
+  val historyScreenState: StateFlow<HistoryScreenState> = _historyScreenState.asStateFlow()
+
   init {
     refreshHistory()
     checkTodayEntry()
@@ -46,8 +62,59 @@ class RecoveryViewModel @Inject constructor(
 
   fun refreshHistory() {
     viewModelScope.launch {
-      _historyEntries.value = checkInRepository.getAllEntries()
+      val all = checkInRepository.getAllEntries()
+      _historyEntries.value = all
+      rebuildHistoryScreenState(all, _historyScreenState.value.selectedDate)
     }
+  }
+
+  fun selectWeekDay(date: LocalDate) {
+    val all = _historyEntries.value
+    val current = _historyScreenState.value.selectedDate
+    val next = if (current == date) null else date
+    rebuildHistoryScreenState(all, next)
+  }
+
+  private fun rebuildHistoryScreenState(all: List<CheckInEntry>, selectedDate: LocalDate?) {
+    val today = LocalDate.now()
+    val byDate: Map<String, CheckInEntry> = all.associateBy { it.date }
+
+    val weekDays = (6 downTo 0).map { daysAgo ->
+      val date = today.minusDays(daysAgo.toLong())
+      val entry = byDate[date.toString()]
+      val color = cravingToColor(entry?.cravingIntensity)
+      WeekDayData(
+        date = date,
+        label = date.dayOfWeek.name.take(1),
+        color = color,
+      )
+    }
+
+    var streak = 0
+    for (daysAgo in 0..364) {
+      val date = today.minusDays(daysAgo.toLong())
+      if (byDate.containsKey(date.toString())) streak++ else break
+    }
+
+    val displayed = if (selectedDate != null) {
+      all.filter { it.date == selectedDate.toString() }
+    } else {
+      all
+    }
+
+    _historyScreenState.value = HistoryScreenState(
+      weekDays = weekDays,
+      selectedDate = selectedDate,
+      displayedEntries = displayed,
+      streak = streak,
+    )
+  }
+
+  private fun cravingToColor(craving: Int?): DayColor = when {
+    craving == null -> DayColor.EMPTY
+    craving <= 4    -> DayColor.GOOD
+    craving <= 7    -> DayColor.WATCH
+    else            -> DayColor.HIGH_RISK
   }
 
   private fun checkTodayEntry() {
