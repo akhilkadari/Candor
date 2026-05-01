@@ -56,7 +56,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -71,7 +70,6 @@ import com.google.ai.edge.gallery.ui.home.SettingsDialog
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
