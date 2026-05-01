@@ -23,16 +23,20 @@ import androidx.datastore.core.Serializer
 import androidx.datastore.dataStoreFile
 import com.google.ai.edge.gallery.AppLifecycleProvider
 import com.google.ai.edge.gallery.BenchmarkResultsSerializer
+import com.google.ai.edge.gallery.CheckInSerializer
 import com.google.ai.edge.gallery.CutoutsSerializer
 import com.google.ai.edge.gallery.GalleryLifecycleProvider
 import com.google.ai.edge.gallery.SettingsSerializer
 import com.google.ai.edge.gallery.SkillsSerializer
 import com.google.ai.edge.gallery.UserDataSerializer
+import com.google.ai.edge.gallery.data.CheckInRepository
 import com.google.ai.edge.gallery.data.DataStoreRepository
+import com.google.ai.edge.gallery.data.DefaultCheckInRepository
 import com.google.ai.edge.gallery.data.DefaultDataStoreRepository
 import com.google.ai.edge.gallery.data.DefaultDownloadRepository
 import com.google.ai.edge.gallery.data.DownloadRepository
 import com.google.ai.edge.gallery.proto.BenchmarkResults
+import com.google.ai.edge.gallery.proto.CheckInCollection
 import com.google.ai.edge.gallery.proto.CutoutCollection
 import com.google.ai.edge.gallery.proto.Settings
 import com.google.ai.edge.gallery.proto.Skills
@@ -173,6 +177,27 @@ internal object AppModule {
       skillsDataStore,
     )
   }
+
+  @Provides
+  @Singleton
+  fun provideCheckInSerializer(): Serializer<CheckInCollection> = CheckInSerializer
+
+  @Provides
+  @Singleton
+  fun provideCheckInDataStore(
+    @ApplicationContext context: Context,
+    serializer: Serializer<CheckInCollection>,
+  ): DataStore<CheckInCollection> =
+    DataStoreFactory.create(
+      serializer = serializer,
+      produceFile = { context.dataStoreFile("checkins.pb") },
+    )
+
+  @Provides
+  @Singleton
+  fun provideCheckInRepository(
+    dataStore: DataStore<CheckInCollection>,
+  ): CheckInRepository = DefaultCheckInRepository(dataStore)
 
   // Provides DownloadRepository
   @Provides

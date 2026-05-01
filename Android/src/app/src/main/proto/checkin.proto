@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package com.google.ai.edge.gallery.proto;
+
+option java_package = "com.google.ai.edge.gallery.proto";
+option java_multiple_files = true;
+
+message CheckInEntry {
+  string date = 1;              // YYYY-MM-DD, primary key (one entry per day)
+  int32 craving_intensity = 2;  // 1-10, higher = worse
+  int32 mood = 3;               // 1-10, higher = better
+  int32 sleep_quality = 4;      // 1-10, higher = better
+  int32 stress_level = 5;       // 1-10, higher = worse
+  int32 social_connection = 6;  // 1-10, higher = better
+  int32 self_efficacy = 7;      // 1-10, Marlatt forward-looking confidence
+  float sleep_hours = 8;        // decimal, objective sleep duration
+  repeated string triggers = 9; // Marlatt taxonomy keys
+  string hardest_today = 10;    // CBT prompt: high-risk situation
+  string helped_today = 11;     // CBT prompt: coping response
+  int64 timestamp_ms = 12;      // Unix epoch ms of submission
+}
+
+message CheckInCollection {
+  repeated CheckInEntry entries = 1;
+}
