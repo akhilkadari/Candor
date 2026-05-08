@@ -1,6 +1,6 @@
 # Candor 🧠📱
 
-Candor is a **privacy-first Android recovery companion** built for on-device reflection, pattern tracking, and insight generation. Users log a daily check-in, review their recent history, and generate AI-assisted observations — all without sending their data to the cloud.
+Candor is a **privacy-first Android recovery companion** for people who are recovering from substance addictions. It was built for on-device reflection, pattern tracking, and insight generation. Users log a daily check-in, review their recent history, and generate AI-assisted observations — all without sending their data to the cloud.
 
 This project is based on Google AI Edge Gallery and has been refined into a focused recovery experience for a hackathon setting. The core idea is simple:
 
