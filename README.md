@@ -5,6 +5,8 @@ Candor is a **privacy-first Android recovery companion** for people who are reco
 This project is based on Google AI Edge Gallery and has been refined into a focused recovery experience for a hackathon setting. The core idea is simple:
 
 > Log your day → detect patterns → surface insights — all on-device.
+>
+> Devpost Link: https://devpost.com/software/candor-zhwvp5
 
 ---
 
